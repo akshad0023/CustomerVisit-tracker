@@ -1,4 +1,8 @@
-# Welcome to your Expo app 👋
+
+# Customer Visit Tracker 
+
+This is a mobile app built using Expo and Firebase to help game room owners manage customer visits, free credits, and ID verification. 
+It allows the owner to register customers with their name, phone number, and photo ID, track visit history, and prevent repeated use of free credits.
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
