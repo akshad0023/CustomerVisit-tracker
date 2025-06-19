@@ -194,7 +194,7 @@ export default function Login() {
             <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/employeeShift'); }}>
               <Text style={styles.menuItem}>Employee Shift</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/shiftHistory'); }}>
+            <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/machineTracker'); }}>
               <Text style={styles.menuItem}>Machine Tracker</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/logout'); }}>

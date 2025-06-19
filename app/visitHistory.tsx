@@ -31,13 +31,14 @@ const VisitHistoryScreen = () => {
 
         const data: Visit[] = snapshot.docs.map(doc => {
           const v = doc.data();
+          console.log('Visit data:', v);
           return {
             id: doc.id,
             name: v.name || '',
             phone: v.phone || '',
             idImageUrl: v.idImageUrl || '',
             lastUsed: v.lastUsed || '',
-            matchAmount: v.matchAmount || 0,
+            matchAmount: typeof v.matchAmount === 'number' ? v.matchAmount : 0,
           };
         });
 
