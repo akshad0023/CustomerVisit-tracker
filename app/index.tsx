@@ -18,6 +18,8 @@ export default function Login() {
   const [idImage, setIdImage] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
+  const [matchAmount, setMatchAmount] = useState('');
+  const [isNewCustomer, setIsNewCustomer] = useState<boolean | null>(null);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -72,6 +74,11 @@ export default function Login() {
   };
 
   const checkCredits = async () => {
+    if (isNewCustomer === null) {
+      Alert.alert('Please select customer type');
+      return;
+    }
+
     if (phone.length < 6) {
       Alert.alert('Invalid Phone Number');
       return;
@@ -91,11 +98,17 @@ export default function Login() {
       const data = userExists ? docSnap.data() : null;
 
       if (userExists && data && data.lastUsed === today) { 
-        setMessage('❌ Free credits already used today.');
+        setMessage(`❌ Amount match already used today: $${data.matchAmount}`);
         return;
       }
 
       let uploadedImageUrl = data?.idImageUrl || '';
+      if (!userExists) {
+        if (!isNewCustomer) {
+          Alert.alert('Error', 'Customer does not exist');
+          return;
+        }
+      }
       if (!userExists || idImage) {
         if (idImage && idImage.startsWith('data:image')) {
           try {
@@ -138,11 +151,22 @@ export default function Login() {
         lastUsed: today,
         name: name.trim() || data?.name || '',
         phone: phone.trim(),
-        idImageUrl: uploadedImageUrl, // ✅ use idImageUrl
+        idImageUrl: uploadedImageUrl,
+        matchAmount: Number(matchAmount),
         timestamp: new Date().toISOString(),
       });
 
-      setMessage(userExists ? '✅ Credits updated for returning customer!' : '✅ New customer registered and credits granted!');
+      if (!userExists) {
+        const customerRef = doc(db, `owners/${ownerId}/customers`, phone.trim());
+        await setDoc(customerRef, {
+          name: name.trim(),
+          phone: phone.trim(),
+          idImageUrl: uploadedImageUrl,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      setMessage(userExists ? `✅ Visit updated. Amount matched: $${matchAmount}` : `✅ New customer registered. Amount matched: $${matchAmount}`);
     } catch (error: any) {
       console.log('Firestore error:', error);
       Alert.alert('Error', error?.message || 'An unknown error occurred');
@@ -155,11 +179,23 @@ export default function Login() {
       <TouchableOpacity style={styles.menuButton} onPress={() => setMenuVisible(true)}>
         <Text style={styles.menuIcon}>⋮</Text>
       </TouchableOpacity>
+      <TouchableOpacity style={styles.homeButton} onPress={() => setIsNewCustomer(null)}>
+        <Text style={styles.homeIcon}>🏠</Text>
+      </TouchableOpacity>
       <Modal visible={menuVisible} transparent animationType="fade">
         <View style={styles.modalBackground}>
           <View style={styles.menuContainer}>
             <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/visitHistory'); }}>
               <Text style={styles.menuItem}>Visit History</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/customerInfo'); }}>
+              <Text style={styles.menuItem}>Customer Info</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/employeeShift'); }}>
+              <Text style={styles.menuItem}>Employee Shift</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/shiftHistory'); }}>
+              <Text style={styles.menuItem}>Machine Tracker</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => { setMenuVisible(false); router.push('/logout'); }}>
               <Text style={styles.menuItem}>Logout</Text>
@@ -178,28 +214,55 @@ export default function Login() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.header}>Register Member</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter Customer Name"
-          value={name}
-          onChangeText={setName}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Enter Phone Number"
-          keyboardType="default"
-          autoFocus={true}
-          value={phone}
-          onChangeText={setPhone}
-        />
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={[styles.button, { flex: 1, marginRight: 10 }]} onPress={handleCaptureId}>
-            <Text style={styles.buttonText}>Capture ID Photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: 'green' }]} onPress={checkCredits}>
-            <Text style={styles.buttonText}>Check & Save</Text>
-          </TouchableOpacity>
-        </View>
+        {isNewCustomer === null && (
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 20 }}>
+            <TouchableOpacity style={[styles.button, { marginRight: 10 }]} onPress={() => setIsNewCustomer(true)}>
+              <Text style={styles.buttonText}>New Customer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={() => setIsNewCustomer(false)}>
+              <Text style={styles.buttonText}>Existing Customer</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {isNewCustomer !== null && (
+          <>
+            {isNewCustomer && (
+              <TextInput
+                style={styles.input}
+                placeholder="Enter Customer Name"
+                value={name}
+                onChangeText={setName}
+              />
+            )}
+            <TextInput
+              style={styles.input}
+              placeholder="Enter Phone Number"
+              keyboardType="phone-pad"
+              autoFocus={true}
+              value={phone}
+              onChangeText={setPhone}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Enter Match Amount"
+              keyboardType="numeric"
+              value={matchAmount}
+              onChangeText={setMatchAmount}
+            />
+          </>
+        )}
+        {isNewCustomer !== null && (
+          <View style={styles.buttonRow}>
+            {isNewCustomer && (
+              <TouchableOpacity style={[styles.button, { flex: 1, marginRight: 10 }]} onPress={handleCaptureId}>
+                <Text style={styles.buttonText}>Capture ID Photo</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: 'green' }]} onPress={checkCredits}>
+              <Text style={styles.buttonText}>Check & Save</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {message !== '' && <Text style={styles.message}>{message}</Text>}
       </ScrollView>
     </View>
@@ -268,5 +331,15 @@ const styles = StyleSheet.create({
   menuItem: {
     paddingVertical: 10,
     fontSize: 16,
+  },
+  homeButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 20,
+  },
+  homeIcon: {
+    fontSize: 26,
+    fontWeight: 'bold',
   },
 });

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { db } from './firebaseConfig';
 
 interface Visit {
@@ -10,6 +10,7 @@ interface Visit {
   phone: string;
   idImageUrl: string;
   lastUsed: string;
+  matchAmount?: number;
 }
 
 const VisitHistoryScreen = () => {
@@ -36,6 +37,7 @@ const VisitHistoryScreen = () => {
             phone: v.phone || '',
             idImageUrl: v.idImageUrl || '',
             lastUsed: v.lastUsed || '',
+            matchAmount: v.matchAmount || 0,
           };
         });
 
@@ -57,11 +59,7 @@ const VisitHistoryScreen = () => {
         <Text style={styles.title}>{item.name}</Text>
         <Text>Phone: {item.phone}</Text>
         <Text>Date: {item.lastUsed}</Text>
-        {item.idImageUrl ? (
-          <Image source={{ uri: item.idImageUrl }} style={styles.image} />
-        ) : (
-          <Text>No ID image</Text>
-        )}
+        <Text>Amount Matched: ${item.matchAmount}</Text>
       </View>
     );
   };

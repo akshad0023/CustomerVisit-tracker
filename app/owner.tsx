@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { db } from './firebaseConfig';
 
@@ -22,6 +22,14 @@ export default function OwnerScreen() {
       checkOwner();
     }, [])
   );
+
+  useEffect(() => {
+    const checkOwnerId = async () => {
+      const id = await AsyncStorage.getItem('ownerId');
+      console.log('🧾 Stored ownerId:', id);
+    };
+    checkOwnerId();
+  }, []);
 
   const handleSubmit = async () => {
     if (ownerId.trim() === '' || password.trim() === '') {
