@@ -1,18 +1,48 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import dayjs from 'dayjs';
-import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import React, { useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { db, firebaseConfig } from './firebaseConfig';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+// --- FIX: Corrected import path assuming firebaseConfig is in the project root ---
+import { db } from '../firebaseConfig';
+
+// --- HELPER FUNCTION TO CONVERT URI TO BLOB ---
+const uriToBlob = (uri: string): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+      resolve(xhr.response);
+    };
+    xhr.onerror = function (e) {
+      console.log(e);
+      reject(new Error('uriToBlob failed'));
+    };
+    xhr.responseType = 'blob';
+    xhr.open('GET', uri, true);
+    xhr.send(null);
+  });
+};
+// --- END HELPER FUNCTION ---
 
 export default function Login() {
   const router = useRouter();
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [idImage, setIdImage] = useState<string | null>(null);
@@ -24,10 +54,8 @@ export default function Login() {
   useFocusEffect(
     React.useCallback(() => {
       let isActive = true;
-
       const checkOwnerLogin = async () => {
         try {
-          // TEMP: Clear stored credentials for testing
           const ownerId = await AsyncStorage.getItem('ownerId');
           const ownerPass = await AsyncStorage.getItem('ownerPassword');
           if (isActive) {
@@ -39,19 +67,24 @@ export default function Login() {
           }
         } catch (error) {
           console.error('Error checking owner credentials:', error);
-          router.replace('/owner');
+          if (isActive) router.replace('/owner');
         }
       };
-
       checkOwnerLogin();
-
       return () => {
         isActive = false;
       };
-    }, [])
+    }, [router])
   );
 
-  if (loading) return null;
+  const resetForm = () => {
+    setPhone('');
+    setName('');
+    setIdImage(null);
+    setMatchAmount('');
+    setIsNewCustomer(null);
+    setMessage('');
+  };
 
   const handleCaptureId = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
@@ -59,102 +92,108 @@ export default function Login() {
       Alert.alert('Camera access is required!');
       return;
     }
-
-    const result: ImagePicker.ImagePickerResult = await ImagePicker.launchCameraAsync({
+    const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       quality: 0.5,
-      base64: true,
     });
-
-    if (!result.canceled && result.assets[0].base64) {
-      const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
-      setIdImage(base64Image);
-      console.log('ID Image base64 captured');
+    if (!result.canceled) {
+      setIdImage(result.assets[0].uri);
+      console.log('ID Image URI captured:', result.assets[0].uri);
+      Alert.alert('Success', 'ID Photo Captured!');
     }
   };
 
   const checkCredits = async () => {
     if (isNewCustomer === null) {
-      Alert.alert('Please select customer type');
+      Alert.alert('Selection Required', 'Please select if this is a new or existing customer.');
+      return;
+    }
+    if (phone.length < 6) {
+      Alert.alert('Validation Error', 'Please enter a valid phone number.');
+      return;
+    }
+    if (!matchAmount) {
+      Alert.alert('Validation Error', 'Please enter the match amount.');
+      return;
+    }
+    if (isNewCustomer && !name) {
+      Alert.alert('Validation Error', 'Please enter a name for the new customer.');
+      return;
+    }
+    if (isNewCustomer && !idImage) {
+      Alert.alert('ID Required', 'Please capture an ID photo for new customers.');
       return;
     }
 
-    if (phone.length < 6) {
-      Alert.alert('Invalid Phone Number');
-      return;
-    }
+    setIsSubmitting(true);
+    setMessage('Processing...');
 
     const today = dayjs().format('YYYY-MM-DD');
     const ownerId = await AsyncStorage.getItem('ownerId');
+
     if (!ownerId) {
-      Alert.alert('Owner not logged in');
+      Alert.alert('Authentication Error', 'Owner is not logged in. Please restart the app.');
+      setIsSubmitting(false);
       return;
     }
 
     try {
-      const ref = doc(db, `owners/${ownerId}/visitHistory`, phone.trim());
-      const docSnap = await getDoc(ref);
+      const visitHistoryRef = doc(db, `owners/${ownerId}/visitHistory`, phone.trim());
+      const docSnap = await getDoc(visitHistoryRef);
       const userExists = docSnap.exists();
       const data = userExists ? docSnap.data() : null;
 
-      if (userExists && data && data.lastUsed === today) { 
+      if (userExists && data?.lastUsed === today) {
         setMessage(`❌ Amount match already used today: $${data.matchAmount}`);
+        setIsSubmitting(false);
         return;
       }
-
+      
       let uploadedImageUrl = data?.idImageUrl || '';
-      if (!userExists) {
-        if (!isNewCustomer) {
-          Alert.alert('Error', 'Customer does not exist');
+
+      if (idImage) {
+        // --- DIAGNOSTIC LOGGING BLOCK ---
+        const filename = `${phone.trim()}_${Date.now()}.jpg`;
+        const finalPath = `owners/${ownerId}/customer_ids/${filename}`;
+        
+        console.log("-----------------------------------------");
+        console.log("ATTEMPTING UPLOAD WITH THIS INFO:");
+        console.log("1. ownerId from AsyncStorage:", ownerId);
+        console.log("2. Final path for Firebase Storage:", finalPath);
+        console.log("-----------------------------------------");
+        // --- END DIAGNOSTIC LOGGING BLOCK ---
+        
+        try {
+          const blob = await uriToBlob(idImage);
+          const storage = getStorage();
+          const imageRef = ref(storage, finalPath);
+          
+          await uploadBytes(imageRef, blob);
+          uploadedImageUrl = await getDownloadURL(imageRef);
+          
+          console.log('✅ Image uploaded successfully:', uploadedImageUrl);
+        } catch (uploadError: any) {
+          console.error('🔥 UPLOAD FAILED! FULL ERROR OBJECT:', uploadError);
+          if (uploadError.serverResponse) {
+             console.error('Server Response:', uploadError.serverResponse);
+          }
+          Alert.alert('Upload Error', 'Could not upload the ID image. Check console for details.');
+          setMessage('⚠️ Error uploading ID image.');
+          setIsSubmitting(false);
           return;
         }
       }
-      if (!userExists || idImage) {
-        if (idImage && idImage.startsWith('data:image')) {
-          try {
-            const filename = `${ownerId}_${phone}_${Date.now()}.jpg`;
-            console.log('📂 DEBUG FILE PATH:', { ownerId, phone, filename });
-            // Extract base64 data from idImage
-            const base64Data = idImage.split(',')[1];
-            const fileUri = FileSystem.documentDirectory + filename;
 
-            await FileSystem.writeAsStringAsync(fileUri, base64Data, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-
-            // @ts-ignore
-            await FileSystem.uploadAsync(
-              `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/idImages%2F${filename}?uploadType=media`,
-              fileUri,
-              {
-                uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-                headers: {
-                  "Content-Type": "image/jpeg",
-                },
-              }
-            );
-
-            uploadedImageUrl = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/idImages%2F${filename}?alt=media`;
-            console.log('✅ Image uploaded successfully:', uploadedImageUrl);
-          } catch (uploadError: any) {
-            console.error('🔥 Upload failed:', uploadError?.message || uploadError);
-            Alert.alert('Upload Error', uploadError?.message || 'Could not upload ID image.');
-            setMessage('⚠️ Error uploading ID image.');
-            return;
-          }
-        } else {
-          console.warn('No valid base64 image to upload.');
-        }
-      }
-
-      await setDoc(ref, {
+      const visitData = {
         lastUsed: today,
         name: name.trim() || data?.name || '',
         phone: phone.trim(),
         idImageUrl: uploadedImageUrl,
         matchAmount: Number(matchAmount),
         timestamp: new Date().toISOString(),
-      });
+      };
+      
+      await setDoc(visitHistoryRef, visitData);
 
       if (!userExists) {
         const customerRef = doc(db, `owners/${ownerId}/customers`, phone.trim());
@@ -164,22 +203,32 @@ export default function Login() {
           idImageUrl: uploadedImageUrl,
           createdAt: new Date().toISOString(),
         });
+        setMessage(`✅ New customer registered. Matched: $${matchAmount}`);
+      } else {
+        setMessage(`✅ Visit updated. Matched: $${matchAmount}`);
       }
+      
+      setTimeout(() => {
+        resetForm();
+      }, 2000);
 
-      setMessage(userExists ? `✅ Visit updated. Amount matched: $${matchAmount}` : `✅ New customer registered. Amount matched: $${matchAmount}`);
     } catch (error: any) {
       console.log('Firestore error:', error);
-      Alert.alert('Error', error?.message || 'An unknown error occurred');
-      setMessage('⚠️ Error checking credits.');
+      Alert.alert('Error', error?.message || 'An unknown error occurred.');
+      setMessage('⚠️ An error occurred.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
+
+  if (loading) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff', position: 'relative' }}>
       <TouchableOpacity style={styles.menuButton} onPress={() => setMenuVisible(true)}>
         <Text style={styles.menuIcon}>⋮</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.homeButton} onPress={() => setIsNewCustomer(null)}>
+      <TouchableOpacity style={styles.homeButton} onPress={resetForm}>
         <Text style={styles.homeIcon}>🏠</Text>
       </TouchableOpacity>
       <Modal visible={menuVisible} transparent animationType="fade">
@@ -205,12 +254,7 @@ export default function Login() {
       </Modal>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: 20,
-        }}
+        contentContainerStyle={styles.scrollContainer}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.header}>Register Member</Text>
@@ -249,19 +293,23 @@ export default function Login() {
               value={matchAmount}
               onChangeText={setMatchAmount}
             />
-          </>
-        )}
-        {isNewCustomer !== null && (
-          <View style={styles.buttonRow}>
-            {isNewCustomer && (
+            <View style={styles.buttonRow}>
               <TouchableOpacity style={[styles.button, { flex: 1, marginRight: 10 }]} onPress={handleCaptureId}>
-                <Text style={styles.buttonText}>Capture ID Photo</Text>
+                <Text style={styles.buttonText}>{idImage ? 'Re-take ID' : 'Capture ID'}</Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: 'green' }]} onPress={checkCredits}>
-              <Text style={styles.buttonText}>Check & Save</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={[styles.button, { flex: 1, backgroundColor: isSubmitting ? '#ccc' : 'green' }]}
+                onPress={checkCredits}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Check & Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
         )}
         {message !== '' && <Text style={styles.message}>{message}</Text>}
       </ScrollView>
@@ -270,76 +318,18 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    fontSize: 22,
-    marginBottom: 20,
-    fontWeight: 'bold',
-  },
-  input: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#aaa',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#1e90ff',
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 8,
-    marginBottom: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-  },
-  message: {
-    marginTop: 20,
-    fontSize: 16,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    width: '100%',
-    marginBottom: 10,
-  },
-  menuButton: {
-    position: 'absolute',
-    top: 40,
-    left: 20,
-    zIndex: 20,
-  },
-  menuIcon: {
-    fontSize: 26,
-    fontWeight: 'bold',
-  },
-  modalBackground: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'flex-start',
-    paddingTop: 80,
-    paddingHorizontal: 20,
-  },
-  menuContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
-  },
-  menuItem: {
-    paddingVertical: 10,
-    fontSize: 16,
-  },
-  homeButton: {
-    position: 'absolute',
-    top: 40,
-    right: 20,
-    zIndex: 20,
-  },
-  homeIcon: {
-    fontSize: 26,
-    fontWeight: 'bold',
-  },
+  scrollContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  header: { fontSize: 22, marginBottom: 20, fontWeight: 'bold' },
+  input: { width: '100%', borderWidth: 1, borderColor: '#aaa', borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 16 },
+  button: { backgroundColor: '#1e90ff', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, alignItems: 'center', justifyContent: 'center', minHeight: 48 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  message: { marginTop: 20, fontSize: 16, textAlign: 'center', paddingHorizontal: 10 },
+  buttonRow: { flexDirection: 'row', width: '100%', marginBottom: 10 },
+  menuButton: { position: 'absolute', top: 40, left: 20, zIndex: 20 },
+  menuIcon: { fontSize: 26, fontWeight: 'bold' },
+  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-start', paddingTop: 80, paddingHorizontal: 20 },
+  menuContainer: { backgroundColor: '#fff', borderRadius: 8, padding: 12 },
+  menuItem: { paddingVertical: 10, fontSize: 16 },
+  homeButton: { position: 'absolute', top: 40, right: 20, zIndex: 20 },
+  homeIcon: { fontSize: 26, fontWeight: 'bold' },
 });

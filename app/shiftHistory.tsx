@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
-import { db } from './firebaseConfig';
+import { db } from '../firebaseConfig';
 
 interface ShiftData {
   id: string;

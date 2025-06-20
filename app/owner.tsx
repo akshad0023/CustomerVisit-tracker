@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { db } from './firebaseConfig';
+import { db } from '../firebaseConfig';
 
 export default function OwnerScreen() {
   const [ownerId, setOwnerId] = useState('');

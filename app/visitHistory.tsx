@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
-import { db } from './firebaseConfig';
+import { db } from '../firebaseConfig';
 
 interface Visit {
   id: string;

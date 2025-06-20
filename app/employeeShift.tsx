@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { collection, doc, getDocs, setDoc, Timestamp } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { db } from './firebaseConfig';
+import { db } from '../firebaseConfig';
 
 export default function EmployeeShift() {
   const router = useRouter();
