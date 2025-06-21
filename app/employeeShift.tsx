@@ -34,7 +34,6 @@ export default function EmployeeShift() {
   const [isShiftStarted, setIsShiftStarted] = useState(false);
   const [isShiftEnding, setIsShiftEnding] = useState(false);
   const [shiftId, setShiftId] = useState('');
-  // startTime will be stored as a string from AsyncStorage, so we manage it as such
   const [startTime, setStartTime] = useState<string | null>(null); 
   const [newMachine, setNewMachine] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,7 +45,7 @@ export default function EmployeeShift() {
         const parsed = JSON.parse(savedShift);
         setEmployeeName(parsed.employeeName);
         setShiftId(parsed.shiftId);
-        setStartTime(parsed.startTime); // Keep as string from JSON
+        setStartTime(parsed.startTime);
         setIsShiftStarted(true);
         setIsShiftEnding(parsed.isShiftEnding || false);
         setMachineData(parsed.machineData || {});
@@ -69,6 +68,30 @@ export default function EmployeeShift() {
     setNewMachine('');
   };
 
+  // NEW: Function to handle deleting a machine from the list
+  const handleDeleteMachine = (machineToDelete: string) => {
+    Alert.alert(
+      "Confirm Deletion",
+      `Are you sure you want to remove Machine ${machineToDelete}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            setMachineData((prev) => {
+              const updatedData = { ...prev };
+              delete updatedData[machineToDelete];
+              // Also update AsyncStorage to persist the deletion
+              AsyncStorage.mergeItem('ongoingShift', JSON.stringify({ machineData: updatedData }));
+              return updatedData;
+            });
+          },
+        },
+      ]
+    );
+  };
+
   const handleStartShift = async () => {
     if (!employeeName.trim()) {
       Alert.alert('Please enter employee name');
@@ -77,7 +100,7 @@ export default function EmployeeShift() {
     const newShiftId = `${employeeName.trim().replace(/\s+/g, '_')}_${Date.now()}`;
     const newStartTime = new Date();
     setShiftId(newShiftId);
-    setStartTime(newStartTime.toISOString()); // Store as ISO string
+    setStartTime(newStartTime.toISOString());
     setIsShiftStarted(true);
     await AsyncStorage.setItem('ongoingShift', JSON.stringify({
       employeeName,
@@ -114,12 +137,11 @@ export default function EmployeeShift() {
       if (!ownerId) throw new Error('Owner ID not found');
 
       const endTime = new Date();
-      // FIX 1: Convert the startTime string from state into a valid Date object for comparison.
       const shiftStartDate = startTime ? new Date(startTime) : null;
 
       let totalIn = 0;
       let totalOut = 0;
-      const machines: any = {};
+      const machines: { [key: string]: { in: number, out: number } } = {};
       Object.entries(machineData).forEach(([machine, { in: inAmt, out: outAmt }]) => {
         const inNum = parseFloat(inAmt) || 0;
         const outNum = parseFloat(outAmt) || 0;
@@ -134,15 +156,8 @@ export default function EmployeeShift() {
       
       visitSnapshot.forEach(doc => {
         const data = doc.data();
-        
-        // FIX 2: Robustly get the visit time.
-        // If data.timestamp has a .toDate() method, it's a Firestore Timestamp. Use it.
-        // Otherwise, assume it's an ISO string (from older saves) and create a Date object.
         const visitTime = data.timestamp?.toDate ? data.timestamp.toDate() : (data.timestamp ? new Date(data.timestamp) : null);
-
         const match = typeof data.matchAmount === 'number' ? data.matchAmount : 0;
-        
-        // FIX 3: Ensure both dates are valid before comparing.
         if (visitTime && shiftStartDate && visitTime >= shiftStartDate && visitTime <= endTime) {
           totalMatchedAmount += match;
         }
@@ -150,7 +165,7 @@ export default function EmployeeShift() {
       
       await setDoc(doc(db, `owners/${ownerId}/shifts`, shiftId), {
         employeeName, 
-        startTime: startTime, // Save the original startTime string
+        startTime: startTime, 
         endTime: endTime.toISOString(), 
         machines, 
         totalIn, 
@@ -183,12 +198,6 @@ export default function EmployeeShift() {
       return updated;
     });
   };
-
-  const liveTotalIn = Object.values(machineData).reduce((sum, val) => sum + (parseFloat(val.in) || 0), 0);
-  const liveTotalOut = Object.values(machineData).reduce((sum, val) => sum + (parseFloat(val.out) || 0), 0);
-  const liveProfit = liveTotalOut - liveTotalIn;
-  const liveProfitColor = liveProfit >= 0 ? '#28a745' : '#dc3545';
-  const liveProfitLabel = liveProfit >= 0 ? 'Profit' : 'Loss';
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -254,33 +263,24 @@ export default function EmployeeShift() {
                   <Text style={[styles.machineCell, styles.machineHeadertext]}>Machine</Text>
                   <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>In ($)</Text>
                   <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>Out ($)</Text>
+                  {/* Empty header for the delete button column */}
+                  <View style={styles.deleteButtonHeader} /> 
                 </View>
                 {Object.keys(machineData).sort((a,b) => parseInt(a) - parseInt(b)).map((machine) => (
                   <View key={machine} style={styles.machineRow}>
                     <Text style={[styles.machineCell, styles.machineLabel]}>{machine}</Text>
                     <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.in || ''} onChangeText={(text) => handleMachineInput(machine, 'in', text)} />
                     <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.out || ''} onChangeText={(text) => handleMachineInput(machine, 'out', text)} />
+                    {/* NEW: Delete button for each machine row */}
+                    <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteMachine(machine)}>
+                      <Ionicons name="trash-outline" size={22} color="#dc3545" />
+                    </TouchableOpacity>
                   </View>
                 ))}
               </View>
             )}
 
-            <View style={styles.divider} />
-
-            <View style={styles.summaryContainer}>
-                <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Total In:</Text>
-                    <Text style={styles.summaryValue}>${liveTotalIn.toFixed(2)}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Total Out:</Text>
-                    <Text style={styles.summaryValue}>${liveTotalOut.toFixed(2)}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                    <Text style={[styles.summaryLabel, {fontWeight: 'bold'}]}>{liveProfitLabel}:</Text>
-                    <Text style={[styles.summaryValue, {color: liveProfitColor, fontWeight: 'bold'}]}>${Math.abs(liveProfit).toFixed(2)}</Text>
-                </View>
-            </View>
+            {/* REMOVED: All the summary and profit/loss calculation views have been removed. */}
             
             <TouchableOpacity style={[styles.button, styles.successButton]} onPress={handleSaveShift} disabled={isSubmitting}>
               {isSubmitting ? <ActivityIndicator color="#fff"/> :
@@ -298,182 +298,40 @@ export default function EmployeeShift() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 10,
-    backgroundColor: '#f0f2f5',
-    flexGrow: 1,
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-    marginTop: 40,
-  },
-  header: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#1c1c1e',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginVertical: 10,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-  },
-  cardTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  inputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8f8f8',
-    borderWidth: 1,
-    borderColor: '#e8e8e8',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    height: 55,
-    fontSize: 16,
-    color: '#333',
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    paddingVertical: 15,
-    marginTop: 10,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 10,
-  },
-  primaryButton: {
-    backgroundColor: '#007bff',
-  },
-  warningButton: {
-    backgroundColor: '#ffc107',
-  },
-  successButton: {
-    backgroundColor: '#28a745',
-  },
-  activeShiftInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff3cd',
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  activeShiftText: {
-    fontSize: 16,
-    color: '#856404',
-  },
-  subHeader: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#495057',
-    marginBottom: 15,
-  },
-  addMachineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  addButton: {
-    marginLeft: 10,
-    backgroundColor: '#007bff',
-    paddingHorizontal: 20,
-    height: 55,
-    justifyContent: 'center',
-    borderRadius: 12,
-  },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  machineTable: {
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  machineTableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#f8f9fa',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  machineHeadertext: {
-    fontWeight: 'bold',
-    color: '#495057',
-  },
-  machineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  machineCell: {
+  container: { padding: 10, backgroundColor: '#f0f2f5', flexGrow: 1 },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10, marginTop: 40 },
+  header: { fontSize: 26, fontWeight: 'bold', color: '#1c1c1e' },
+  card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginVertical: 10, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 5 },
+  cardTitle: { fontSize: 22, fontWeight: '600', color: '#333', textAlign: 'center', marginBottom: 24 },
+  inputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, paddingHorizontal: 12 },
+  inputIcon: { marginRight: 10 },
+  input: { flex: 1, height: 55, fontSize: 16, color: '#333' },
+  button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 15, marginTop: 10, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2 },
+  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 10 },
+  primaryButton: { backgroundColor: '#007bff' },
+  warningButton: { backgroundColor: '#ffc107' },
+  successButton: { backgroundColor: '#28a745' },
+  activeShiftInfo: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff3cd', padding: 20, borderRadius: 12, marginBottom: 20 },
+  activeShiftText: { fontSize: 16, color: '#856404' },
+  subHeader: { fontSize: 18, fontWeight: '600', color: '#495057', marginBottom: 15 },
+  addMachineRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  addButton: { marginLeft: 10, backgroundColor: '#007bff', paddingHorizontal: 20, height: 55, justifyContent: 'center', borderRadius: 12 },
+  addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  machineTable: { borderWidth: 1, borderColor: '#e9ecef', borderRadius: 8, overflow: 'hidden', marginBottom: 20 },
+  machineTableHeader: { flexDirection: 'row', backgroundColor: '#f8f9fa', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
+  machineHeadertext: { fontWeight: 'bold', color: '#495057' },
+  machineRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
+  machineCell: { padding: 12, fontSize: 16, flex: 1 },
+  machineLabel: { fontWeight: '500', color: '#333' },
+  machineInput: { backgroundColor: '#fff', textAlign: 'center', borderLeftWidth: 1, borderLeftColor: '#e9ecef' },
+  // NEW: Styles for the delete button and its header column
+  deleteButton: {
     padding: 12,
-    fontSize: 16,
-    flex: 1,
-  },
-  machineLabel: {
-    fontWeight: '500',
-    color: '#333',
-  },
-  machineInput: {
-    backgroundColor: '#fff',
-    textAlign: 'center',
     borderLeftWidth: 1,
     borderLeftColor: '#e9ecef',
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#e9ecef',
-    marginVertical: 15,
-  },
-  summaryContainer: {
-    marginBottom: 20,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  summaryLabel: {
-    fontSize: 16,
-    color: '#6c757d',
-  },
-  summaryValue: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#343a40',
+  deleteButtonHeader: {
+    padding: 12,
+    width: 46, // Match the width of the button for alignment
   },
 });

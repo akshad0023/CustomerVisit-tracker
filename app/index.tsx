@@ -27,7 +27,6 @@ import {
 import { db } from '../firebaseConfig';
 
 
-// FIX: Providing the full implementation for uriToBlob
 const uriToBlob = (uri: string): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -47,7 +46,6 @@ const uriToBlob = (uri: string): Promise<Blob> => {
 interface IconTextInputProps extends TextInputProps {
   iconName: keyof typeof Ionicons.glyphMap;
 }
-// FIX: Providing the full implementation for IconTextInput, which must return JSX
 const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => {
   return (
     <View style={styles.inputContainer}>
@@ -63,6 +61,7 @@ interface Customer {
   phone: string;
   idImageUrl?: string;
 }
+
 
 export default function Login() {
   const router = useRouter();
@@ -322,6 +321,13 @@ export default function Login() {
               <Ionicons name="analytics-outline" size={22} color="#444" style={styles.menuIcon} />
               <Text style={styles.menuItemText}>Machine Tracker</Text>
             </TouchableOpacity>
+            
+            {/* NEW: I have added this button to navigate to the Profit & Loss page. */}
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/profitloss'); }}>
+              <Ionicons name="wallet-outline" size={22} color="#444" style={styles.menuIcon} />
+              <Text style={styles.menuItemText}>Profit & Loss</Text>
+            </TouchableOpacity>
+
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/logout'); }}>
               <Ionicons name="log-out-outline" size={22} color="#dc3545" style={styles.menuIcon} />
@@ -451,7 +457,6 @@ export default function Login() {
   );
 }
 
-// ... styles are complete and correct
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f2f5' },
   scrollContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 15 },

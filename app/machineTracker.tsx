@@ -17,7 +17,7 @@ interface Shift {
   totalIn: number;
   totalOut: number;
   totalMatchedAmount: number;
-  profitOrLoss: number;
+  profitOrLoss: number; // This value is calculated as (Total Out - Total In) on the shift page
 }
 
 interface SummaryRowProps {
@@ -25,13 +25,13 @@ interface SummaryRowProps {
   value: string;
   valueColor?: string;
   isBold?: boolean;
-  iconName?: keyof typeof Ionicons.glyphMap; // Added icon prop
+  iconName?: keyof typeof Ionicons.glyphMap;
 }
 
 const SummaryRow: React.FC<SummaryRowProps> = ({ label, value, valueColor = '#333', isBold = false, iconName }) => (
   <View style={styles.summaryRow}>
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      {iconName && <Ionicons name={iconName} size={20} color={valueColor} style={{ marginRight: 10, width: 22 }} />}
+      {iconName && <Ionicons name={iconName} size={20} color={valueColor || '#333'} style={{ marginRight: 10, width: 22 }} />}
       <Text style={[styles.summaryLabel, isBold && { fontWeight: 'bold' }]}>{label}</Text>
     </View>
     <Text style={[styles.summaryValue, { color: valueColor }, isBold && { fontWeight: 'bold' }]}>{value}</Text>
@@ -74,9 +74,13 @@ export default function MachineTracker() {
   }
 
   const renderShiftCard = ({ item }: { item: Shift }) => {
-    const profitLoss = item.profitOrLoss || 0;
-    const resultColor = profitLoss >= 0 ? '#28a745' : '#dc3545';
-    const profitLabel = profitLoss >= 0 ? 'Profit' : 'Loss';
+    // FIX: The profit/loss for the business is Total In - Total Out.
+    // We recalculate it here for display purposes, ignoring the stored `profitOrLoss`
+    // to ensure the logic is always correct on this screen.
+    const businessProfit = (item.totalIn || 0) - (item.totalOut || 0);
+
+    const resultColor = businessProfit >= 0 ? '#28a745' : '#dc3545';
+    const profitLabel = businessProfit >= 0 ? 'Profit' : 'Loss';
     
     return (
       <View style={styles.card}>
@@ -106,12 +110,11 @@ export default function MachineTracker() {
         )}
         <View style={styles.divider} />
         <View style={styles.summaryContainer}>
-          <SummaryRow label="Total In:" value={`$${(item.totalIn || 0).toFixed(2)}`} iconName="arrow-down-circle-outline" valueColor="#dc3545" />
-          <SummaryRow label="Total Out:" value={`$${(item.totalOut || 0).toFixed(2)}`} iconName="arrow-up-circle-outline" valueColor="#28a745" />
-          {/* UPDATED: This now has an icon and uses toFixed for consistency */}
+          <SummaryRow label="Total In:" value={`$${(item.totalIn || 0).toFixed(2)}`} iconName="arrow-down-circle-outline" valueColor="#28a745" />
+          <SummaryRow label="Total Out:" value={`$${(item.totalOut || 0).toFixed(2)}`} iconName="arrow-up-circle-outline" valueColor="#dc3545" />
           <SummaryRow label="Matched Amount:" value={`$${(item.totalMatchedAmount || 0).toFixed(2)}`} iconName="gift-outline" valueColor="#6f42c1" />
           <View style={styles.divider} />
-          <SummaryRow label={`${profitLabel}:`} value={`$${Math.abs(profitLoss).toFixed(2)}`} valueColor={resultColor} isBold={true} iconName={profitLoss >= 0 ? "trending-up-outline" : "trending-down-outline"} />
+          <SummaryRow label={`${profitLabel}:`} value={`$${Math.abs(businessProfit).toFixed(2)}`} valueColor={resultColor} isBold={true} iconName={businessProfit >= 0 ? "trending-up-outline" : "trending-down-outline"} />
         </View>
       </View>
     );
@@ -174,6 +177,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#fff',
     padding: 16,
+    marginHorizontal: 10,
     marginVertical: 8,
     borderRadius: 12,
     elevation: 3,

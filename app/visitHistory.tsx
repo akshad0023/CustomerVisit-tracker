@@ -2,15 +2,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+// NEW: Import dayjs and the 'where' function
+import dayjs from 'dayjs';
+import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
-  TextInput, // NEW: Import TextInput
-  TextInputProps, // NEW: Import TextInputProps for typing
+  TextInput,
+  TextInputProps,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -25,7 +27,6 @@ interface Visit {
   matchAmount?: number;
 }
 
-// NEW: A reusable component for our search bar for consistency
 interface IconTextInputProps extends TextInputProps {
   iconName: keyof typeof Ionicons.glyphMap;
 }
@@ -37,23 +38,30 @@ const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => 
 );
 
 const VisitHistoryScreen = () => {
-  // --- NEW: State management for search functionality ---
   const [loading, setLoading] = useState(true);
-  const [visits, setVisits] = useState<Visit[]>([]); // Master list of all visits
-  const [searchQuery, setSearchQuery] = useState(''); // The text in the search bar
-  const [filteredVisits, setFilteredVisits] = useState<Visit[]>([]); // The list to be displayed
+  const [visits, setVisits] = useState<Visit[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredVisits, setFilteredVisits] = useState<Visit[]>([]);
   const router = useRouter();
 
-  // --- EFFECT 1: Fetch all data from Firestore once ---
   useEffect(() => {
     const fetchVisits = async () => {
       try {
         const ownerId = await AsyncStorage.getItem('ownerId');
         if (!ownerId) throw new Error('Owner not logged in');
+
+        // --- FIX: Logic to fetch visits only for the current day ---
+        const today = dayjs().format('YYYY-MM-DD'); // Get today's date as a string
+
         const q = query(
           collection(db, `owners/${ownerId}/visitHistory`),
+          // Only get documents where the 'lastUsed' field is exactly today's date
+          where('lastUsed', '==', today),
+          // You can still order by timestamp if you want the most recent of today's visits first
           orderBy('timestamp', 'desc')
         );
+        // --- End of Fix ---
+
         const snapshot = await getDocs(q);
         const data: Visit[] = snapshot.docs.map(doc => {
           const v = doc.data();
@@ -62,28 +70,27 @@ const VisitHistoryScreen = () => {
           };
         });
         setVisits(data);
-        setFilteredVisits(data); // Initially, the filtered list is the full list
+        setFilteredVisits(data);
       } catch (error) {
         console.error('Error fetching visit history:', error);
       } finally {
         setLoading(false);
       }
     };
-    fetchVisits();
-  }, []);
 
-  // --- EFFECT 2: Filter the data whenever the search query changes ---
+    fetchVisits();
+  }, []); // This effect runs once when the screen loads
+
   useEffect(() => {
     if (searchQuery === '') {
-      setFilteredVisits(visits); // If search is empty, show all visits
+      setFilteredVisits(visits);
     } else {
       const filteredData = visits.filter(visit =>
-        // Case-insensitive search that checks if the name includes the search query
         visit.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setFilteredVisits(filteredData);
     }
-  }, [searchQuery, visits]); // This effect re-runs if the query or the master list changes
+  }, [searchQuery, visits]);
 
   const renderItem = ({ item }: { item: Visit }) => (
     <View style={styles.card}>
@@ -113,7 +120,7 @@ const VisitHistoryScreen = () => {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#007bff" />
-        <Text style={styles.loadingText}>Loading History...</Text>
+        <Text style={styles.loadingText}>Loading Today's Visits...</Text>
       </View>
     );
   }
@@ -121,25 +128,24 @@ const VisitHistoryScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
-        <Text style={styles.header}>Visit History</Text>
+        {/* UPDATED: Title changed for clarity */}
+        <Text style={styles.header}>Today's Visits</Text>
         <TouchableOpacity onPress={() => router.push('/')}>
           <Ionicons name="home-outline" size={28} color="#007bff" />
         </TouchableOpacity>
       </View>
 
-      {/* NEW: The Search Bar component */}
       <View style={{ paddingHorizontal: 10, marginBottom: 10 }}>
         <IconTextInput
           iconName="search-outline"
           placeholder="Search by Customer Name..."
           value={searchQuery}
           onChangeText={setSearchQuery}
-          clearButtonMode="while-editing" // Adds a small 'x' to clear the search on iOS
+          clearButtonMode="while-editing"
         />
       </View>
 
       <FlatList
-        // UPDATED: The list now displays the filtered data
         data={filteredVisits}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
@@ -147,8 +153,7 @@ const VisitHistoryScreen = () => {
         ListEmptyComponent={
           <View style={styles.centered}>
             <Text style={styles.loadingText}>
-              {/* Smarter message: shows different text if search yields no results */}
-              {searchQuery ? 'No customers match your search.' : 'No visit history found.'}
+              {searchQuery ? 'No customers match your search for today.' : 'No visits recorded for today.'}
             </Text>
           </View>
         }
@@ -176,7 +181,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1c1c1e',
   },
-  // NEW: Styles for the search bar
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',

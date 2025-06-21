@@ -8,7 +8,6 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  // I need these to handle the keyboard properly.
   Keyboard,
   ScrollView,
   StyleSheet,
@@ -53,7 +52,6 @@ export default function OwnerScreen() {
       Alert.alert('Validation Error', 'Both Owner ID and Password are required.');
       return;
     }
-    // I should also dismiss the keyboard when the user presses submit.
     Keyboard.dismiss();
     setIsLoading(true);
 
@@ -62,23 +60,48 @@ export default function OwnerScreen() {
       const ownerSnap = await getDoc(ownerRef);
 
       if (!ownerSnap.exists()) {
-        await setDoc(ownerRef, { password });
+        // --- FIX: Logic for NEW Owner Registration ---
+        // Create the owner with a default "inactive" status.
+        await setDoc(ownerRef, {
+          password: password,
+          subscriptionStatus: "inactive" 
+        });
+
+        // Do NOT log them in. Instead, instruct them to contact you.
+        Alert.alert(
+          'Registration Successful!',
+          'Your account has been created. Please contact support to activate your subscription.'
+        );
+        setOwnerId('');
+        setPassword('');
+        
+      } else {
+        // --- FIX: Logic for EXISTING Owner Login ---
+        const ownerData = ownerSnap.data();
+
+        // First, check the password.
+        if (ownerData.password !== password) {
+          Alert.alert('Login Failed', 'The password you entered is incorrect. Please try again.');
+          setIsLoading(false);
+          return; // Stop the function here.
+        }
+        
+        // If password is correct, now check the subscription.
+        if (ownerData.subscriptionStatus !== 'active') {
+          Alert.alert(
+            'Subscription Inactive',
+            'Your account is not active. Please contact support to activate or renew your subscription.'
+          );
+          setIsLoading(false);
+          return; // Stop the function here.
+        }
+
+        // If both password and subscription are valid, log them in.
         await AsyncStorage.setItem('ownerId', ownerId.trim());
         await AsyncStorage.setItem('ownerPassword', password);
         setIsRegistered(true);
-        Alert.alert('Registration Successful', `Welcome, ${ownerId.trim()}! You are now logged in.`);
+        Alert.alert('Welcome Back', `Successfully logged in as ${ownerId.trim()}.`);
         router.replace('/');
-      } else {
-        const ownerData = ownerSnap.data();
-        if (ownerData.password === password) {
-          await AsyncStorage.setItem('ownerId', ownerId.trim());
-          await AsyncStorage.setItem('ownerPassword', password);
-          setIsRegistered(true);
-          Alert.alert('Welcome Back', `Successfully logged in as ${ownerId.trim()}.`);
-          router.replace('/');
-        } else {
-          Alert.alert('Login Failed', 'The password you entered is incorrect. Please try again.');
-        }
       }
     } catch (error: any) {
       console.error('Owner login/registration error:', error);
@@ -110,14 +133,13 @@ export default function OwnerScreen() {
   };
 
   return (
-    // This wrapper will handle dismissing the keyboard when I tap anywhere.
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.card}>
           <Ionicons name="shield-checkmark-outline" size={48} color="#007bff" style={{ alignSelf: 'center', marginBottom: 15 }} />
           <Text style={styles.header}>Admin Login</Text>
           <Text style={styles.subtitle}>
-            {isRegistered ? 'Enter your credentials to continue.' : 'Register a new admin account.'}
+            Enter your credentials to access the control panel.
           </Text>
 
           <IconTextInput
@@ -133,7 +155,6 @@ export default function OwnerScreen() {
             secureTextEntry
             value={password}
             onChangeText={setPassword}
-            // I'll add this so the keyboard "done" button can also submit the form.
             onSubmitEditing={handleSubmit}
           />
           <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={isLoading}>
@@ -142,7 +163,9 @@ export default function OwnerScreen() {
             ) : (
               <>
                 <Ionicons name="log-in-outline" size={22} color="#fff" />
-                <Text style={styles.buttonText}>{isRegistered ? 'Login' : 'Register & Login'}</Text>
+                <Text style={styles.buttonText}>
+                  {isRegistered ? 'Login' : 'Register & Proceed'}
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -159,7 +182,6 @@ export default function OwnerScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    // I need to use flexGrow here so the ScrollView works correctly.
     flexGrow: 1, 
     backgroundColor: '#f0f2f5',
     padding: 20,
