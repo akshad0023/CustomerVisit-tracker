@@ -1,10 +1,31 @@
 // app/employeeShift.tsx
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { collection, doc, getDocs, setDoc, Timestamp } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TextInputProps,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { db } from '../firebaseConfig';
+
+interface IconTextInputProps extends TextInputProps {
+  iconName: keyof typeof Ionicons.glyphMap;
+}
+const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => (
+  <View style={styles.inputContainer}>
+    <Ionicons name={iconName} size={22} color="#888" style={styles.inputIcon} />
+    <TextInput style={styles.input} {...props} placeholderTextColor="#aaa" />
+  </View>
+);
 
 export default function EmployeeShift() {
   const router = useRouter();
@@ -13,8 +34,10 @@ export default function EmployeeShift() {
   const [isShiftStarted, setIsShiftStarted] = useState(false);
   const [isShiftEnding, setIsShiftEnding] = useState(false);
   const [shiftId, setShiftId] = useState('');
-  const [startTime, setStartTime] = useState<Date | null>(null);
+  // startTime will be stored as a string from AsyncStorage, so we manage it as such
+  const [startTime, setStartTime] = useState<string | null>(null); 
   const [newMachine, setNewMachine] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const restoreShiftState = async () => {
@@ -23,7 +46,7 @@ export default function EmployeeShift() {
         const parsed = JSON.parse(savedShift);
         setEmployeeName(parsed.employeeName);
         setShiftId(parsed.shiftId);
-        setStartTime(new Date(parsed.startTime));
+        setStartTime(parsed.startTime); // Keep as string from JSON
         setIsShiftStarted(true);
         setIsShiftEnding(parsed.isShiftEnding || false);
         setMachineData(parsed.machineData || {});
@@ -32,13 +55,16 @@ export default function EmployeeShift() {
     restoreShiftState();
   }, []);
 
-  // Removed static machineNumbers
-
   const addMachine = () => {
     if (!newMachine.trim()) return;
+    const machineKey = newMachine.trim();
+    if (machineData[machineKey]) {
+      Alert.alert('Duplicate Machine', `Machine ${machineKey} has already been added.`);
+      return;
+    }
     setMachineData((prev) => ({
       ...prev,
-      [newMachine.trim()]: { in: '', out: '' },
+      [machineKey]: { in: '', out: '' },
     }));
     setNewMachine('');
   };
@@ -48,18 +74,19 @@ export default function EmployeeShift() {
       Alert.alert('Please enter employee name');
       return;
     }
-    const newShiftId = `${employeeName}_${Date.now()}`;
+    const newShiftId = `${employeeName.trim().replace(/\s+/g, '_')}_${Date.now()}`;
+    const newStartTime = new Date();
     setShiftId(newShiftId);
-    setStartTime(new Date());
+    setStartTime(newStartTime.toISOString()); // Store as ISO string
     setIsShiftStarted(true);
     await AsyncStorage.setItem('ongoingShift', JSON.stringify({
       employeeName,
       shiftId: newShiftId,
-      startTime: new Date(),
+      startTime: newStartTime.toISOString(),
       isShiftEnding: false,
       machineData: {}
     }));
-    Alert.alert('Shift Started');
+    Alert.alert('Shift Started', `Shift for ${employeeName} has begun.`);
   };
 
   const handleEndShift = async () => {
@@ -73,23 +100,26 @@ export default function EmployeeShift() {
   };
 
   const handleSaveShift = async () => {
+    setIsSubmitting(true);
     try {
       const hasMachineInput = Object.values(machineData).some(
-        ({ in: i, out: o }) => parseFloat(i) > 0 || parseFloat(o) > 0
+        ({ in: i, out: o }) => (i && parseFloat(i) > 0) || (o && parseFloat(o) > 0)
       );
       if (!hasMachineInput) {
-        Alert.alert('Please enter amounts for at least one machine');
+        Alert.alert('Missing Data', 'Please enter amounts for at least one machine.');
+        setIsSubmitting(false);
         return;
       }
-
       const ownerId = await AsyncStorage.getItem('ownerId');
       if (!ownerId) throw new Error('Owner ID not found');
 
       const endTime = new Date();
+      // FIX 1: Convert the startTime string from state into a valid Date object for comparison.
+      const shiftStartDate = startTime ? new Date(startTime) : null;
+
       let totalIn = 0;
       let totalOut = 0;
       const machines: any = {};
-
       Object.entries(machineData).forEach(([machine, { in: inAmt, out: outAmt }]) => {
         const inNum = parseFloat(inAmt) || 0;
         const outNum = parseFloat(outAmt) || 0;
@@ -97,42 +127,42 @@ export default function EmployeeShift() {
         totalIn += inNum;
         totalOut += outNum;
       });
-
       const profitOrLoss = totalOut - totalIn;
       const carryForward = totalOut;
-
       const visitSnapshot = await getDocs(collection(db, `owners/${ownerId}/visitHistory`));
       let totalMatchedAmount = 0;
+      
       visitSnapshot.forEach(doc => {
         const data = doc.data();
-        const visitTime = data.timestamp?.toDate?.();
-        const match = typeof data.matchedAmount === 'number' ? data.matchedAmount : 0;
-        if (
-          visitTime &&
-          startTime &&
-          visitTime >= startTime &&
-          visitTime <= endTime
-        ) {
+        
+        // FIX 2: Robustly get the visit time.
+        // If data.timestamp has a .toDate() method, it's a Firestore Timestamp. Use it.
+        // Otherwise, assume it's an ISO string (from older saves) and create a Date object.
+        const visitTime = data.timestamp?.toDate ? data.timestamp.toDate() : (data.timestamp ? new Date(data.timestamp) : null);
+
+        const match = typeof data.matchAmount === 'number' ? data.matchAmount : 0;
+        
+        // FIX 3: Ensure both dates are valid before comparing.
+        if (visitTime && shiftStartDate && visitTime >= shiftStartDate && visitTime <= endTime) {
           totalMatchedAmount += match;
         }
       });
-
+      
       await setDoc(doc(db, `owners/${ownerId}/shifts`, shiftId), {
-        employeeName,
-        startTime: startTime?.toISOString(),
-        endTime: endTime.toISOString(),
-        machines,
-        totalIn,
-        totalOut,
-        profitOrLoss,
-        carryForward,
-        totalMatchedAmount,
+        employeeName, 
+        startTime: startTime, // Save the original startTime string
+        endTime: endTime.toISOString(), 
+        machines, 
+        totalIn, 
+        totalOut, 
+        profitOrLoss, 
+        carryForward, 
+        totalMatchedAmount, 
         timestamp: Timestamp.now(),
       });
-
+      
       await AsyncStorage.removeItem('ongoingShift');
-
-      Alert.alert('Shift saved successfully!');
+      Alert.alert('Shift Saved!', 'The shift data has been successfully recorded.');
       setIsShiftStarted(false);
       setIsShiftEnding(false);
       setEmployeeName('');
@@ -140,140 +170,310 @@ export default function EmployeeShift() {
       setShiftId('');
       setStartTime(null);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error Saving Shift', error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleMachineInput = (machine: string, type: 'in' | 'out', value: string) => {
     setMachineData((prev) => {
-      const updated = {
-        ...prev,
-        [machine]: {
-          ...prev[machine],
-          [type]: value,
-        },
-      };
+      const updated = { ...prev, [machine]: { ...prev[machine], [type]: value } };
       AsyncStorage.mergeItem('ongoingShift', JSON.stringify({ machineData: updated }));
       return updated;
     });
   };
 
+  const liveTotalIn = Object.values(machineData).reduce((sum, val) => sum + (parseFloat(val.in) || 0), 0);
+  const liveTotalOut = Object.values(machineData).reduce((sum, val) => sum + (parseFloat(val.out) || 0), 0);
+  const liveProfit = liveTotalOut - liveTotalIn;
+  const liveProfitColor = liveProfit >= 0 ? '#28a745' : '#dc3545';
+  const liveProfitLabel = liveProfit >= 0 ? 'Profit' : 'Loss';
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <TouchableOpacity onPress={() => router.push('/')}>
-        <Text style={{ textAlign: 'right', color: 'blue', marginBottom: 10 }}>🏠 Home</Text>
-      </TouchableOpacity>
-      <Text style={styles.header}>Employee Shift Tracker</Text>
+      <View style={styles.headerContainer}>
+        <Text style={styles.header}>Shift Control</Text>
+        <TouchableOpacity onPress={() => router.push('/')}>
+          <Ionicons name="home-outline" size={28} color="#007bff" />
+        </TouchableOpacity>
+      </View>
 
-      {!isShiftStarted ? (
-        <>
-          <TextInput
-            placeholder="Enter Employee Name"
-            style={styles.input}
-            value={employeeName}
-            onChangeText={setEmployeeName}
-          />
-          <TouchableOpacity style={styles.button} onPress={handleStartShift}>
-            <Text style={styles.buttonText}>Start Shift</Text>
-          </TouchableOpacity>
-        </>
-      ) : !isShiftEnding ? (
-        <>
-          <Text>Shift started for: {employeeName}</Text>
-          <TouchableOpacity style={[styles.button, { backgroundColor: 'orange' }]} onPress={handleEndShift}>
-            <Text style={styles.buttonText}>End Shift</Text>
-          </TouchableOpacity>
-        </>
-      ) : (
-        <>
-          <Text style={styles.subHeader}>Enter Machine Amounts</Text>
-          <View style={styles.addMachineRow}>
-            <TextInput
-              placeholder="Enter Machine #"
-              value={newMachine}
-              onChangeText={setNewMachine}
-              style={styles.machineInput}
+      <View style={styles.card}>
+        {!isShiftStarted ? (
+          <>
+            <Text style={styles.cardTitle}>Start New Shift</Text>
+            <IconTextInput
+              iconName="person-circle-outline"
+              placeholder="Enter Employee Name"
+              value={employeeName}
+              onChangeText={setEmployeeName}
             />
-            <TouchableOpacity onPress={addMachine} style={[styles.button, { marginLeft: 10, paddingVertical: 8 }]}>
-              <Text style={styles.buttonText}>Add</Text>
+            <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={handleStartShift}>
+              <Ionicons name="play-circle-outline" size={24} color="#fff" />
+              <Text style={styles.buttonText}>Start Shift</Text>
             </TouchableOpacity>
-          </View>
-          {Object.keys(machineData).map((machine) => (
-            <View key={machine} style={styles.machineRow}>
-              <Text style={styles.machineLabel}>{machine}</Text>
-              <TextInput
-                placeholder="In"
-                keyboardType="numeric"
-                style={styles.machineInput}
-                value={machineData[machine]?.in || ''}
-                onChangeText={(text) => handleMachineInput(machine, 'in', text)}
-              />
-              <TextInput
-                placeholder="Out"
-                keyboardType="numeric"
-                style={styles.machineInput}
-                value={machineData[machine]?.out || ''}
-                onChangeText={(text) => handleMachineInput(machine, 'out', text)}
-              />
+          </>
+        ) : !isShiftEnding ? (
+          <>
+            <Text style={styles.cardTitle}>Shift Active</Text>
+            <View style={styles.activeShiftInfo}>
+              <Ionicons name="time-outline" size={40} color="#ffc107" />
+              <View style={{marginLeft: 15}}>
+                <Text style={styles.activeShiftText}>Employee: <Text style={{fontWeight: 'bold'}}>{employeeName}</Text></Text>
+                <Text style={styles.activeShiftText}>Started at: {startTime ? new Date(startTime).toLocaleTimeString() : ''}</Text>
+              </View>
             </View>
-          ))}
+            <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={handleEndShift}>
+              <Ionicons name="stop-circle-outline" size={24} color="#fff" />
+              <Text style={styles.buttonText}>End & Finalize Shift</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={styles.cardTitle}>Finalize Shift for {employeeName}</Text>
+            <Text style={styles.subHeader}>Enter Machine Data</Text>
+            
+            <View style={styles.addMachineRow}>
+              <IconTextInput
+                iconName="add-circle-outline"
+                placeholder="Machine #"
+                value={newMachine}
+                onChangeText={setNewMachine}
+                onSubmitEditing={addMachine}
+                keyboardType="number-pad"
+              />
+              <TouchableOpacity onPress={addMachine} style={styles.addButton}>
+                <Text style={styles.addButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
 
-          <Text>Total In: ${Object.values(machineData).reduce((sum, val) => sum + (parseFloat(val.in) || 0), 0)}</Text>
-          <Text>Total Out: ${Object.values(machineData).reduce((sum, val) => sum + (parseFloat(val.out) || 0), 0)}</Text>
-          <Text style={{ color: Object.values(machineData).reduce((outSum, val) => outSum + (parseFloat(val.out) || 0), 0) - Object.values(machineData).reduce((inSum, val) => inSum + (parseFloat(val.in) || 0), 0) >= 0 ? 'green' : 'red' }}>
-            {
-              Object.values(machineData).reduce((outSum, val) => outSum + (parseFloat(val.out) || 0), 0) - Object.values(machineData).reduce((inSum, val) => inSum + (parseFloat(val.in) || 0), 0) >= 0
-                ? `Profit: $${Object.values(machineData).reduce((outSum, val) => outSum + (parseFloat(val.out) || 0), 0) - Object.values(machineData).reduce((inSum, val) => inSum + (parseFloat(val.in) || 0), 0)}`
-                : `Loss: $${Object.values(machineData).reduce((inSum, val) => inSum + (parseFloat(val.in) || 0), 0) - Object.values(machineData).reduce((outSum, val) => outSum + (parseFloat(val.out) || 0), 0)}`
-            }
-          </Text>
+            {Object.keys(machineData).length > 0 && (
+              <View style={styles.machineTable}>
+                <View style={styles.machineTableHeader}>
+                  <Text style={[styles.machineCell, styles.machineHeadertext]}>Machine</Text>
+                  <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>In ($)</Text>
+                  <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>Out ($)</Text>
+                </View>
+                {Object.keys(machineData).sort((a,b) => parseInt(a) - parseInt(b)).map((machine) => (
+                  <View key={machine} style={styles.machineRow}>
+                    <Text style={[styles.machineCell, styles.machineLabel]}>{machine}</Text>
+                    <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.in || ''} onChangeText={(text) => handleMachineInput(machine, 'in', text)} />
+                    <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.out || ''} onChangeText={(text) => handleMachineInput(machine, 'out', text)} />
+                  </View>
+                ))}
+              </View>
+            )}
 
-          <TouchableOpacity style={[styles.button, { backgroundColor: 'green' }]} onPress={handleSaveShift}>
-            <Text style={styles.buttonText}>Save Shift</Text>
-          </TouchableOpacity>
-        </>
-      )}
+            <View style={styles.divider} />
+
+            <View style={styles.summaryContainer}>
+                <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Total In:</Text>
+                    <Text style={styles.summaryValue}>${liveTotalIn.toFixed(2)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Total Out:</Text>
+                    <Text style={styles.summaryValue}>${liveTotalOut.toFixed(2)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                    <Text style={[styles.summaryLabel, {fontWeight: 'bold'}]}>{liveProfitLabel}:</Text>
+                    <Text style={[styles.summaryValue, {color: liveProfitColor, fontWeight: 'bold'}]}>${Math.abs(liveProfit).toFixed(2)}</Text>
+                </View>
+            </View>
+            
+            <TouchableOpacity style={[styles.button, styles.successButton]} onPress={handleSaveShift} disabled={isSubmitting}>
+              {isSubmitting ? <ActivityIndicator color="#fff"/> :
+                <>
+                  <Ionicons name="save-outline" size={24} color="#fff" />
+                  <Text style={styles.buttonText}>Save Shift</Text>
+                </>
+              }
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20 },
-  header: { fontSize: 22, fontWeight: 'bold', marginBottom: 20 },
-  subHeader: { fontSize: 18, marginBottom: 10 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 20,
-    fontSize: 16,
+  container: {
+    padding: 10,
+    backgroundColor: '#f0f2f5',
+    flexGrow: 1,
   },
-  machineRow: {
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    marginTop: 40,
+  },
+  header: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#1c1c1e',
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginVertical: 10,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+  },
+  cardTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  inputContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    backgroundColor: '#f8f8f8',
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    height: 55,
+    fontSize: 16,
+    color: '#333',
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 15,
+    marginTop: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 10,
+  },
+  primaryButton: {
+    backgroundColor: '#007bff',
+  },
+  warningButton: {
+    backgroundColor: '#ffc107',
+  },
+  successButton: {
+    backgroundColor: '#28a745',
+  },
+  activeShiftInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  activeShiftText: {
+    fontSize: 16,
+    color: '#856404',
+  },
+  subHeader: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#495057',
+    marginBottom: 15,
   },
   addMachineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 20,
   },
-  machineLabel: { width: 50, fontSize: 16 },
-  machineInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ccc',
+  addButton: {
     marginLeft: 10,
-    padding: 8,
-    borderRadius: 6,
+    backgroundColor: '#007bff',
+    paddingHorizontal: 20,
+    height: 55,
+    justifyContent: 'center',
+    borderRadius: 12,
   },
-  button: {
-    backgroundColor: '#1e90ff',
-    paddingVertical: 12,
+  addButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  machineTable: {
+    borderWidth: 1,
+    borderColor: '#e9ecef',
     borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 20,
+    overflow: 'hidden',
+    marginBottom: 20,
   },
-  buttonText: { color: '#fff', fontSize: 16 },
+  machineTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  machineHeadertext: {
+    fontWeight: 'bold',
+    color: '#495057',
+  },
+  machineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  machineCell: {
+    padding: 12,
+    fontSize: 16,
+    flex: 1,
+  },
+  machineLabel: {
+    fontWeight: '500',
+    color: '#333',
+  },
+  machineInput: {
+    backgroundColor: '#fff',
+    textAlign: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: '#e9ecef',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#e9ecef',
+    marginVertical: 15,
+  },
+  summaryContainer: {
+    marginBottom: 20,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  summaryLabel: {
+    fontSize: 16,
+    color: '#6c757d',
+  },
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#343a40',
+  },
 });

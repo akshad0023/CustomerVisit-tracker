@@ -1,20 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
-import React, { useCallback, useState } from 'react';
+// FIX: Added useEffect to the React import
+import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Pressable,
   StyleSheet,
   Text,
+  TextInput,
+  TextInputProps,
+  TouchableOpacity,
   View,
 } from 'react-native';
-// The new, better library for image viewing
 import ImageView from 'react-native-image-viewing';
 import { db } from '../firebaseConfig';
 
-// Define a type for our customer for better type safety
+
 interface Customer {
   id: string;
   name: string;
@@ -22,16 +26,28 @@ interface Customer {
   idImageUrl?: string;
 }
 
+interface IconTextInputProps extends TextInputProps {
+  iconName: keyof typeof Ionicons.glyphMap;
+}
+const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => (
+  <View style={styles.searchContainer}>
+    <Ionicons name={iconName} size={20} color="#888" style={styles.searchIcon} />
+    <TextInput style={styles.searchInput} {...props} placeholderTextColor="#aaa" />
+  </View>
+);
+
 export default function CustomerInfo() {
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
+  const router = useRouter();
 
-  // This creates the array of image objects that ImageView expects
   const images = customers
-    .filter(customer => customer.idImageUrl) // Only include customers with an image
-    .map(customer => ({ uri: customer.idImageUrl! })); // Create the { uri: '...' } object
+    .filter(customer => customer.idImageUrl)
+    .map(customer => ({ uri: customer.idImageUrl! }));
 
   useFocusEffect(
     useCallback(() => {
@@ -57,23 +73,33 @@ export default function CustomerInfo() {
             ...doc.data(),
           })) as Customer[];
           setCustomers(data);
+          setFilteredCustomers(data);
         } catch (error) {
           console.error('Error fetching customer info:', error);
         } finally {
           if (isActive) setLoading(false);
         }
       };
-
       fetchData();
-
       return () => {
         isActive = false;
       };
     }, [])
   );
 
+  useEffect(() => {
+    if (searchQuery === '') {
+      setFilteredCustomers(customers);
+    } else {
+      const filteredData = customers.filter(customer =>
+        customer.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredCustomers(filteredData);
+    }
+  }, [searchQuery, customers]);
+
+
   const openImageModal = (customerImageUrl: string) => {
-    // Find the index of the clicked image in our `images` array
     const imageIndex = images.findIndex(img => img.uri === customerImageUrl);
     if (imageIndex !== -1) {
       setCurrentImageIndex(imageIndex);
@@ -90,8 +116,50 @@ export default function CustomerInfo() {
     );
   }
 
+  const renderCustomerCard = ({ item }: { item: Customer }) => (
+    <View style={styles.card}>
+      <View style={styles.infoRow}>
+        <Ionicons name="person-circle-outline" size={24} color="#333" style={styles.icon} />
+        <Text style={styles.name}>{item.name}</Text>
+      </View>
+      <View style={styles.infoRow}>
+        <Ionicons name="call-outline" size={22} color="#555" style={styles.icon} />
+        <Text style={styles.phone}>{item.phone}</Text>
+      </View>
+      <View style={styles.divider} />
+      {item.idImageUrl ? (
+        <TouchableOpacity style={styles.viewIdButton} onPress={() => openImageModal(item.idImageUrl!)}>
+          <Ionicons name="card-outline" size={20} color="#fff" />
+          <Text style={styles.viewIdButtonText}>View ID</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.infoRow}>
+          <Ionicons name="close-circle-outline" size={22} color="#888" style={styles.icon} />
+          <Text style={styles.noId}>No ID on file</Text>
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <View style={styles.container}>
+      <View style={styles.headerContainer}>
+        <Text style={styles.header}>Customer List</Text>
+        <TouchableOpacity onPress={() => router.push('/')}>
+          <Ionicons name="home-outline" size={28} color="#007bff" />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={{ paddingHorizontal: 10, marginBottom: 10 }}>
+        <IconTextInput
+          iconName="search-outline"
+          placeholder="Search by Customer Name..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          clearButtonMode="while-editing"
+        />
+      </View>
+
       <ImageView
         images={images}
         imageIndex={currentImageIndex}
@@ -99,47 +167,142 @@ export default function CustomerInfo() {
         onRequestClose={() => setModalVisible(false)}
         FooterComponent={({ imageIndex }) => (
             <View style={styles.footerContainer}>
-                <Text style={styles.footerText}>{customers.find(c => c.idImageUrl === images[imageIndex].uri)?.name}</Text>
+                <Text style={styles.footerText}>{customers.find(c => c.idImageUrl === images[imageIndex]?.uri)?.name}</Text>
             </View>
         )}
       />
 
       <FlatList
-        data={customers}
+        data={filteredCustomers}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.name}>👤 {item.name}</Text>
-            <Text style={styles.phone}>📱 {item.phone}</Text>
-            {item.idImageUrl ? (
-              <Pressable onPress={() => openImageModal(item.idImageUrl!)}>
-                <Text style={styles.viewId}>🪪 View ID</Text>
-              </Pressable>
-            ) : (
-              <Text style={styles.noId}>❌ No ID uploaded</Text>
-            )}
-          </View>
-        )}
-        ListEmptyComponent={<Text style={styles.loadingText}>No customers found.</Text>}
+        renderItem={renderCustomerCard}
+        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
+        ListEmptyComponent={
+            <View style={styles.centered}>
+                <Text style={styles.loadingText}>
+                    {searchQuery ? 'No customers match your search.' : 'No customers found.'}
+                </Text>
+            </View>
+        }
       />
     </View>
   );
 }
 
+// ... styles remain the same
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 10, fontSize: 18, color: 'gray' },
-  card: { padding: 15, backgroundColor: '#fff', borderRadius: 8, marginVertical: 5, marginHorizontal: 10, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 1.41 },
-  name: { fontSize: 18, fontWeight: 'bold' },
-  phone: { fontSize: 16, marginTop: 4, color: '#333' },
-  viewId: { color: '#1e90ff', marginTop: 10, fontWeight: '600', fontSize: 16 },
-  noId: { marginTop: 10, color: 'gray', fontStyle: 'italic', fontSize: 16 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f0f2f5', 
+    paddingTop: 10,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 15,
+    marginTop: 40,
+  },
+  header: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#1c1c1e',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: 50,
+    fontSize: 16,
+    color: '#333',
+  },
+  centered: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    marginTop: 50,
+  },
+  loadingText: { 
+    marginTop: 10, 
+    fontSize: 18, 
+    color: 'gray',
+    textAlign: 'center',
+  },
+  card: { 
+    padding: 20, 
+    backgroundColor: '#fff', 
+    borderRadius: 12, 
+    marginVertical: 8,
+    elevation: 3, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: 0.1, 
+    shadowRadius: 4,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  icon: {
+    marginRight: 15,
+    width: 24,
+    textAlign: 'center',
+  },
+  name: { 
+    fontSize: 20, 
+    fontWeight: 'bold',
+    color: '#1c1c1e',
+  },
+  phone: { 
+    fontSize: 16, 
+    color: '#333' 
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#e9ecef',
+    marginVertical: 8,
+  },
+  viewIdButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007bff',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  viewIdButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  noId: { 
+    color: '#888', 
+    fontStyle: 'italic',
+    fontSize: 16,
+  },
   footerContainer: {
     height: 80,
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   footerText: {
     fontSize: 18,
