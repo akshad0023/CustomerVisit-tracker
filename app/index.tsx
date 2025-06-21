@@ -1,15 +1,13 @@
 // app/index.tsx
 
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import SegmentedControl from '@react-native-segmented-control/segmented-control';
-import { useFocusEffect } from '@react-navigation/native';
 import dayjs from 'dayjs';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { onAuthStateChanged, sendEmailVerification, updateEmail } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, setDoc, Timestamp, where } from 'firebase/firestore';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,7 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { db } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 
 
 const uriToBlob = (uri: string): Promise<Blob> => {
@@ -62,7 +60,6 @@ interface Customer {
   idImageUrl?: string;
 }
 
-
 export default function Login() {
   const router = useRouter();
 
@@ -80,31 +77,16 @@ export default function Login() {
   const [nameSearchResults, setNameSearchResults] = useState<Customer[]>([]);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      let isActive = true;
-      const checkOwnerLogin = async () => {
-        try {
-          const ownerId = await AsyncStorage.getItem('ownerId');
-          const ownerPass = await AsyncStorage.getItem('ownerPassword');
-          if (isActive) {
-            if (!ownerId || !ownerPass) {
-              router.replace('/owner');
-            } else {
-              setLoading(false);
-            }
-          }
-        } catch (error) {
-          console.error('Error checking owner credentials:', error);
-          if (isActive) router.replace('/owner');
-        }
-      };
-      checkOwnerLogin();
-      return () => {
-        isActive = false;
-      };
-    }, [router])
-  );
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setLoading(false);
+      } else {
+        router.replace('/owner');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   const clearCustomerInputs = () => {
     setPhone('');
@@ -140,52 +122,51 @@ export default function Login() {
     if (isSearching) return;
     const lookupValue = lookupField === 'name' ? name.trim() : phone.trim();
     if (!lookupValue) return;
-
     setIsSearching(true);
     setFoundCustomer(null);
-    
-    const ownerId = await AsyncStorage.getItem('ownerId');
-    if (!ownerId) {
-      Alert.alert("Error", "Owner ID not found.");
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("Error", "Not logged in.");
       setIsSearching(false);
       return;
     }
-    
-    const customersRef = collection(db, 'owners', ownerId, 'customers');
-
+    const ref = collection(db, 'owners', user.uid, 'customers');
     try {
       if (lookupField === 'phone') {
-        const docRef = doc(customersRef, lookupValue);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const customerData = { id: docSnap.id, ...docSnap.data() } as Customer;
-          setFoundCustomer(customerData);
-          setName(customerData.name);
-          setPhone(customerData.phone);
+        if (!/^\d{10}$/.test(lookupValue)) {
+          Alert.alert('Invalid Phone', 'Phone number must be 10 digits.');
+          setIsSearching(false);
+          return;
+        }
+        const dRef = doc(ref, lookupValue);
+        const dSnap = await getDoc(dRef);
+        if (dSnap.exists()) {
+          const cData = { id: dSnap.id, ...dSnap.data() } as Customer;
+          setFoundCustomer(cData);
+          setName(cData.name);
+          setPhone(cData.phone);
         } else {
-          Alert.alert("Not Found", "No customer found with this phone number.");
+          Alert.alert("Not Found", "No customer with this phone number.");
           setName('');
         }
       } else {
-        const q = query(customersRef, where('name', '==', lookupValue));
-        const querySnapshot = await getDocs(q);
-        const results = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Customer[];
-
-        if (results.length === 0) {
-          Alert.alert("Not Found", "No customers found with this name.");
-        } else if (results.length === 1) {
-          const customerData = results[0];
-          setFoundCustomer(customerData);
-          setName(customerData.name);
-          setPhone(customerData.phone);
+        const q = query(ref, where('name', '==', lookupValue));
+        const qSnap = await getDocs(q);
+        const res = qSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Customer[];
+        if (res.length === 0) {
+          Alert.alert("Not Found", "No customers with this name.");
+        } else if (res.length === 1) {
+          const cData = res[0];
+          setFoundCustomer(cData);
+          setName(cData.name);
+          setPhone(cData.phone);
         } else {
-          setNameSearchResults(results);
+          setNameSearchResults(res);
           setSearchModalVisible(true);
         }
       }
-    } catch (error) {
-      console.error("Lookup error:", error);
-      Alert.alert("Error", "Failed to perform customer lookup.");
+    } catch (e) {
+      Alert.alert("Error", "Customer lookup failed.");
     } finally {
       setIsSearching(false);
     }
@@ -199,100 +180,125 @@ export default function Login() {
   };
 
   const checkCredits = async () => {
-    const isNewCustomer = customerTypeIndex === 0;
-    const customerPhone = isNewCustomer ? phone.trim() : foundCustomer?.phone;
-    
+    const isNew = customerTypeIndex === 0;
+    const cPhone = isNew ? phone.trim() : foundCustomer?.phone;
     if (customerTypeIndex === null) {
       Alert.alert('Selection Required', 'Please select a customer type.');
       return;
     }
-    if (!customerPhone || !/^\d{10}$/.test(customerPhone)) {
-      Alert.alert('Invalid Phone Number', 'Phone number must be exactly 10 digits.');
+    if (!cPhone || !/^\d{10}$/.test(cPhone)) {
+      Alert.alert('Invalid Phone', 'Phone must be 10 digits.');
       return;
     }
     if (!matchAmount) {
-      Alert.alert('Validation Error', 'Please enter the match amount.');
+      Alert.alert('Validation Error', 'Please enter match amount.');
       return;
     }
-    if (!isNewCustomer && !foundCustomer) {
-      Alert.alert("Validation Error", "Please look up and confirm an existing customer.");
+    if (!isNew && !foundCustomer) {
+      Alert.alert("Validation Error", "Please look up a customer.");
       return;
     }
-    if (isNewCustomer && !name) {
-      Alert.alert('Validation Error', 'Please enter a name for the new customer.');
+    if (isNew && !name) {
+      Alert.alert('Validation Error', 'Please enter a name.');
       return;
     }
-    if (isNewCustomer && !idImage) {
-      Alert.alert('ID Required', 'Please capture an ID photo for new customers.');
+    if (isNew && !idImage) {
+      Alert.alert('ID Required', 'Please capture an ID.');
       return;
     }
-    
     setIsSubmitting(true);
     setMessage('Processing...');
-    const today = dayjs().format('YYYY-MM-DD');
-    const ownerId = await AsyncStorage.getItem('ownerId');
-    if (!ownerId) {
-      Alert.alert('Authentication Error', 'Owner is not logged in.');
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert('Auth Error', 'Not logged in.');
       setIsSubmitting(false);
       return;
     }
-    
-    const customerName = isNewCustomer ? name.trim() : foundCustomer!.name;
-
+    const ownerId = user.uid;
+    const today = dayjs().format('YYYY-MM-DD');
+    const cName = isNew ? name.trim() : foundCustomer!.name;
     try {
-      const visitHistoryRef = doc(db, `owners/${ownerId}/visitHistory`, customerPhone);
-      const docSnap = await getDoc(visitHistoryRef);
-      const userExists = docSnap.exists();
-      const data = userExists ? docSnap.data() : null;
-      if (userExists && data?.lastUsed === today) {
-        setMessage(`❌ Amount match already used today for ${customerName}: $${data.matchAmount}`);
+      const vRef = doc(db, `owners/${ownerId}/visitHistory`, cPhone);
+      const dSnap = await getDoc(vRef);
+      const exists = dSnap.exists();
+      const data = exists ? dSnap.data() : null;
+      if (exists && data?.lastUsed === today) {
+        setMessage(`❌ Match already used today for ${cName}: $${data.matchAmount}`);
         setIsSubmitting(false);
         return;
       }
-      
-      let uploadedImageUrl = data?.idImageUrl || '';
-      if (isNewCustomer && idImage) {
-        const filename = `${customerPhone}_${Date.now()}.jpg`;
-        const finalPath = `owners/${ownerId}/customer_ids/${filename}`;
+      let url = data?.idImageUrl || '';
+      if (isNew && idImage) {
+        const fName = `${cPhone}_${Date.now()}.jpg`;
+        const fPath = `owners/${ownerId}/customer_ids/${fName}`;
         try {
           const blob = await uriToBlob(idImage);
-          const storage = getStorage();
-          const imageRef = ref(storage, finalPath);
-          await uploadBytes(imageRef, blob);
-          uploadedImageUrl = await getDownloadURL(imageRef);
-        } catch (uploadError: any) {
-          Alert.alert('Upload Error', 'Could not upload the ID image.');
+          const store = getStorage();
+          const iRef = ref(store, fPath);
+          await uploadBytes(iRef, blob);
+          url = await getDownloadURL(iRef);
+        } catch (e) {
+          Alert.alert('Upload Error', 'Could not upload ID.');
           setIsSubmitting(false);
           return;
         }
       }
-
-      await setDoc(visitHistoryRef, {
-        lastUsed: today, name: customerName, phone: customerPhone, idImageUrl: uploadedImageUrl, matchAmount: Number(matchAmount), timestamp: Timestamp.now(),
-      });
-
-      if (isNewCustomer) {
-        const customerRef = doc(db, `owners/${ownerId}/customers`, customerPhone);
-        await setDoc(customerRef, {
-          name: customerName, phone: customerPhone, idImageUrl: uploadedImageUrl, createdAt: Timestamp.now(),
-        });
+      await setDoc(vRef, { lastUsed: today, name: cName, phone: cPhone, idImageUrl: url, matchAmount: Number(matchAmount), timestamp: Timestamp.now(), });
+      if (isNew) {
+        const cRef = doc(db, `owners/${ownerId}/customers`, cPhone);
+        await setDoc(cRef, { name: cName, phone: cPhone, idImageUrl: url, createdAt: Timestamp.now() });
         setMessage(`✅ New customer registered. Matched: $${matchAmount}`);
       } else {
-        setMessage(`✅ Visit updated for ${customerName}. Matched: $${matchAmount}`);
+        setMessage(`✅ Visit updated for ${cName}. Matched: $${matchAmount}`);
       }
-      
-      setTimeout(() => { 
-        clearCustomerInputs(); 
+      setTimeout(() => {
+        clearCustomerInputs();
       }, 2000);
-    } catch (error: any) {
-      console.log('Firestore error:', error);
+    } catch (e) {
       Alert.alert('Error', 'An unknown error occurred.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (loading) return null;
+  const handleLogout = () => {
+    Alert.alert("Confirm Logout", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Log Out", style: "destructive", onPress: async () => { await auth.signOut(); } }
+    ]);
+  };
+
+  const handleChangeEmail = () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    Alert.prompt("Change Email Address", "Enter your new email address. You will be logged out and asked to verify the new address.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Confirm & Change", onPress: async (newEmail) => {
+          if (newEmail && newEmail.includes('@')) {
+            try {
+              await updateEmail(user, newEmail.trim());
+              await sendEmailVerification(user);
+              Alert.alert("Success! Please Verify.", `Your login email has been changed to ${newEmail}. A verification link has been sent. You will now be logged out.`);
+              auth.signOut();
+            } catch (error: any) {
+              Alert.alert("Error", "Could not change email. This is a sensitive operation and may require you to log out and log back in before trying again.");
+            }
+          } else {
+            Alert.alert("Invalid Email", "Please enter a valid new email address.");
+          }
+        }
+      }
+    ], 'plain-text', '', 'email-address');
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007bff" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -305,33 +311,34 @@ export default function Login() {
       <Modal visible={menuVisible} transparent animationType="fade">
         <Pressable style={styles.modalBackground} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuContainer}>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/visitHistory'); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/visithistory'); }}>
               <Ionicons name="time-outline" size={22} color="#444" style={styles.menuIcon} />
               <Text style={styles.menuItemText}>Visit History</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/customerInfo'); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/customerinfo'); }}>
               <Ionicons name="people-outline" size={22} color="#444" style={styles.menuIcon} />
               <Text style={styles.menuItemText}>Customer Info</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/employeeShift'); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/employeeshift'); }}>
               <Ionicons name="person-outline" size={22} color="#444" style={styles.menuIcon} />
               <Text style={styles.menuItemText}>Employee Shift</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/machineTracker'); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/machinetracker'); }}>
               <Ionicons name="analytics-outline" size={22} color="#444" style={styles.menuIcon} />
               <Text style={styles.menuItemText}>Machine Tracker</Text>
             </TouchableOpacity>
-            
-            {/* NEW: I have added this button to navigate to the Profit & Loss page. */}
             <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/profitloss'); }}>
               <Ionicons name="wallet-outline" size={22} color="#444" style={styles.menuIcon} />
               <Text style={styles.menuItemText}>Profit & Loss</Text>
             </TouchableOpacity>
-
             <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/logout'); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={handleChangeEmail}>
+              <Ionicons name="mail-outline" size={22} color="#444" style={styles.menuIcon} />
+              <Text style={styles.menuItemText}>Change Login Email</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
               <Ionicons name="log-out-outline" size={22} color="#dc3545" style={styles.menuIcon} />
-              <Text style={[styles.menuItemText, {color: '#dc3545'}]}>Logout</Text>
+              <Text style={[styles.menuItemText, { color: '#dc3545' }]}>Logout</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -353,7 +360,7 @@ export default function Login() {
               )}
             />
             <TouchableOpacity onPress={() => setSearchModalVisible(false)}>
-                <Text style={styles.modalCloseText}>Cancel</Text>
+              <Text style={styles.modalCloseText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -361,34 +368,35 @@ export default function Login() {
 
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
-          <Text style={styles.header}>Register Member</Text>
-          
-          <SegmentedControl
-            values={['New Customer', 'Existing Customer']}
-            selectedIndex={customerTypeIndex ?? undefined}
-            onChange={(event) => {
-              setCustomerTypeIndex(event.nativeEvent.selectedSegmentIndex);
-              clearCustomerInputs();
-            }}
-            style={styles.segmentedControl}
-            fontStyle={{ color: '#333', fontWeight: '600' }}
-            activeFontStyle={{ color: '#fff' }}
-            tintColor="#007bff"
-          />
-
-          {customerTypeIndex !== null && (
+          {customerTypeIndex === null ? (
+            <>
+              <Text style={styles.header}>Register Member</Text>
+              <Text style={styles.subtitle}>How would you like to proceed?</Text>
+              <TouchableOpacity style={styles.choiceCard} onPress={() => setCustomerTypeIndex(0)}>
+                <Ionicons name="person-add-outline" size={32} color="#007bff" />
+                <Text style={styles.choiceTitle}>New Customer</Text>
+                <Text style={styles.choiceDescription}>Register a brand new customer.</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.choiceCard} onPress={() => setCustomerTypeIndex(1)}>
+                <Ionicons name="people-outline" size={32} color="#007bff" />
+                <Text style={styles.choiceTitle}>Existing Customer</Text>
+                <Text style={styles.choiceDescription}>Look up and record a visit.</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
             <View style={styles.formContainer}>
+              <View style={styles.formHeader}>
+                <TouchableOpacity onPress={() => setCustomerTypeIndex(null)} style={styles.backButton}>
+                  <Ionicons name="arrow-back" size={24} color="#555" />
+                </TouchableOpacity>
+                <Text style={styles.header}>{customerTypeIndex === 0 ? 'Register New' : 'Find Existing'}</Text>
+                <View style={{ width: 24 }} />
+              </View>
+
               {customerTypeIndex === 0 && (
                 <>
                   <IconTextInput iconName="person-outline" placeholder="Customer Name" value={name} onChangeText={setName} />
-                  <IconTextInput 
-                    iconName="call-outline" 
-                    placeholder="10-Digit Phone Number" 
-                    keyboardType="number-pad" 
-                    value={phone} 
-                    onChangeText={setPhone}
-                    maxLength={10} 
-                  />
+                  <IconTextInput iconName="call-outline" placeholder="10-Digit Phone Number" keyboardType="number-pad" value={phone} onChangeText={setPhone} maxLength={10} />
                   <IconTextInput iconName="cash-outline" placeholder="Match Amount" keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} />
                   <TouchableOpacity style={[styles.button, styles.captureButton]} onPress={handleCaptureId}>
                     <Ionicons name={idImage ? "camera" : "camera-outline"} size={20} color="#007bff" />
@@ -402,54 +410,29 @@ export default function Login() {
                   {foundCustomer ? (
                     <View style={styles.foundCustomerBox}>
                       <Ionicons name="checkmark-circle" size={24} color="#28a745" />
-                      <View style={{flex: 1, marginLeft: 10}}>
+                      <View style={{ flex: 1, marginLeft: 10 }}>
                         <Text style={styles.foundCustomerName}>{foundCustomer.name}</Text>
                         <Text style={styles.foundCustomerPhone}>{foundCustomer.phone}</Text>
                       </View>
-                      <TouchableOpacity onPress={() => {
-                        setFoundCustomer(null);
-                        setName('');
-                        setPhone('');
-                      }}>
-                         <Ionicons name="close-circle" size={24} color="#888" />
+                      <TouchableOpacity onPress={() => { setFoundCustomer(null); setName(''); setPhone(''); }}>
+                        <Ionicons name="close-circle" size={24} color="#888" />
                       </TouchableOpacity>
                     </View>
                   ) : (
                     <>
-                      <IconTextInput
-                        iconName="person-outline"
-                        placeholder="Search by Name"
-                        value={name}
-                        onChangeText={setName}
-                        onBlur={() => handleLookup('name')}
-                      />
-                      <IconTextInput
-                        iconName="call-outline"
-                        placeholder="Search by 10-Digit Phone"
-                        keyboardType="number-pad"
-                        value={phone}
-                        onChangeText={setPhone}
-                        onBlur={() => handleLookup('phone')}
-                        maxLength={10}
-                      />
+                      <IconTextInput iconName="person-outline" placeholder="Search by Name" value={name} onChangeText={setName} onBlur={() => handleLookup('name')} />
+                      <Text style={styles.orText}>- OR -</Text>
+                      <IconTextInput iconName="call-outline" placeholder="Search by 10-Digit Phone" keyboardType="number-pad" value={phone} onChangeText={setPhone} onBlur={() => handleLookup('phone')} maxLength={10} />
                     </>
                   )}
                   <IconTextInput iconName="cash-outline" placeholder="Match Amount" keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} />
                 </>
               )}
-
               <TouchableOpacity style={[styles.button, styles.submitButton]} onPress={checkCredits} disabled={isSubmitting}>
-                {isSubmitting
-                  ? <ActivityIndicator color="#fff" /> 
-                  : <>
-                      <Ionicons name="checkmark-circle-outline" size={22} color="#fff" />
-                      <Text style={styles.submitButtonText}>Check & Save</Text>
-                    </>
-                }
+                {isSubmitting ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark-circle-outline" size={22} color="#fff" /><Text style={styles.submitButtonText}>Check & Save Visit</Text></>}
               </TouchableOpacity>
             </View>
           )}
-
           {message !== '' && <Text style={styles.message}>{message}</Text>}
         </View>
       </ScrollView>
@@ -457,16 +440,24 @@ export default function Login() {
   );
 }
 
+
 const styles = StyleSheet.create({
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f2f5' },
   container: { flex: 1, backgroundColor: '#f0f2f5' },
   scrollContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 15 },
   card: { width: '100%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 },
-  header: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#1c1c1e' },
-  segmentedControl: { marginBottom: 24 },
+  header: { fontSize: 26, fontWeight: 'bold', textAlign: 'center', marginBottom: 8, color: '#1c1c1e' },
+  subtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 24, },
+  choiceCard: { backgroundColor: '#f8f9fa', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#e9ecef', alignItems: 'center', marginBottom: 15, },
+  choiceTitle: { fontSize: 18, fontWeight: '600', color: '#343a40', marginTop: 10, },
+  choiceDescription: { fontSize: 14, color: '#6c757d', marginTop: 4, textAlign: 'center', },
+  formHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 20, },
+  backButton: { padding: 5, },
   formContainer: { width: '100%' },
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, marginBottom: 16, paddingHorizontal: 12 },
   inputIcon: { marginRight: 10 },
   input: { flex: 1, height: 55, fontSize: 16, color: '#333' },
+  orText: { textAlign: 'center', color: '#aaa', marginVertical: -8, marginBottom: 8, fontWeight: '600' },
   button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 15, marginTop: 10 },
   captureButton: { backgroundColor: '#eaf4ff', borderWidth: 1, borderColor: '#007bff' },
   captureButtonText: { color: '#007bff', fontSize: 16, fontWeight: '600', marginLeft: 8 },
@@ -476,69 +467,19 @@ const styles = StyleSheet.create({
   menuButton: { position: 'absolute', top: 50, left: 20, zIndex: 20, padding: 5 },
   resetButton: { position: 'absolute', top: 50, right: 20, zIndex: 20, padding: 5 },
   modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  menuContainer: { backgroundColor: '#fff', borderRadius: 10, padding: 8, position: 'absolute', top: 90, left: 15, minWidth: 220, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+  menuContainer: { backgroundColor: '#fff', borderRadius: 10, padding: 8, position: 'absolute', top: 90, left: 15, minWidth: 240, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },
   menuIcon: { marginRight: 15 },
   menuItemText: { fontSize: 17, color: '#333' },
   menuDivider: { height: 1, backgroundColor: '#eee', marginVertical: 6 },
-  selectionModal: {
-    width: '100%',
-    maxWidth: 350,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    maxHeight: '70%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 5,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 15,
-  },
-  selectionItem: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  selectionName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  selectionPhone: {
-    fontSize: 14,
-    color: '#555',
-  },
-  modalCloseText: {
-    marginTop: 15,
-    textAlign: 'center',
-    color: '#007bff',
-    fontWeight: '600',
-    fontSize: 16,
-    padding: 10,
-  },
-  foundCustomerBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#eaf7ed',
-    padding: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#28a745',
-    marginBottom: 16,
-  },
-  foundCustomerName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#155724',
-  },
-  foundCustomerPhone: {
-    fontSize: 14,
-    color: '#155724',
-  },
+  selectionModal: { width: '100%', maxWidth: 350, backgroundColor: '#fff', borderRadius: 12, padding: 20, maxHeight: '70%', },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 5, },
+  modalSubtitle: { fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 15, },
+  selectionItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee', },
+  selectionName: { fontSize: 16, fontWeight: '600', },
+  selectionPhone: { fontSize: 14, color: '#555', },
+  modalCloseText: { marginTop: 15, textAlign: 'center', color: '#007bff', fontWeight: '600', fontSize: 16, padding: 10, },
+  foundCustomerBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#eaf7ed', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#28a745', marginBottom: 16, },
+  foundCustomerName: { fontSize: 16, fontWeight: 'bold', color: '#155724', },
+  foundCustomerPhone: { fontSize: 14, color: '#155724', },
 });

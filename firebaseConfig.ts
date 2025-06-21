@@ -1,19 +1,27 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+// firebaseConfig.ts (Compat version for Expo Go)
+
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
+import 'firebase/compat/storage';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBHvPtbdbyvJ1jVEh2nM1djCNg8C33gr8U",
   authDomain: "gameroomapp-754c6.firebaseapp.com",
   projectId: "gameroomapp-754c6",
-  storageBucket: "gameroomapp-754c6.firebasestorage.app", 
+  storageBucket: "gameroomapp-754c6.firebasestorage.app",
   messagingSenderId: "468335540597",
   appId: "1:468335540597:web:d2677d428590c12ef3bb3c",
   measurementId: "G-QZPH1ETR62"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const storage = getStorage(app);
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
-export { db, firebaseConfig, storage };
+const auth = firebase.auth();
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+export { auth, db, firebase, storage };
+

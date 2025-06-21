@@ -1,10 +1,16 @@
 // app/owner.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+// Import all necessary Firebase Auth functions
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword
+} from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import React, { useCallback, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +24,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { db } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 
 interface IconTextInputProps extends TextInputProps {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -31,123 +37,156 @@ const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => 
 );
 
 export default function OwnerScreen() {
-  const [ownerId, setOwnerId] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isRegistered, setIsRegistered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  useFocusEffect(
-    useCallback(() => {
-      const checkOwner = async () => {
-        const storedId = await AsyncStorage.getItem('ownerId');
-        setIsRegistered(!!storedId);
-      };
-      checkOwner();
-    }, [])
-  );
-
-  const handleSubmit = async () => {
-    if (ownerId.trim() === '' || password.trim() === '') {
-      Alert.alert('Validation Error', 'Both Owner ID and Password are required.');
+  const handleRegistration = async () => {
+    if (email.trim() === '' || password.trim() === '') {
+      Alert.alert('Validation Error', 'Both Email and Password are required.');
       return;
     }
     Keyboard.dismiss();
     setIsLoading(true);
 
     try {
-      const ownerRef = doc(db, 'owners', ownerId.trim());
-      const ownerSnap = await getDoc(ownerRef);
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const user = userCredential.user;
 
-      if (!ownerSnap.exists()) {
-        // --- FIX: Logic for NEW Owner Registration ---
-        // Create the owner with a default "inactive" status.
-        await setDoc(ownerRef, {
-          password: password,
-          subscriptionStatus: "inactive" 
-        });
+      // Immediately send the verification email
+      await sendEmailVerification(user);
 
-        // Do NOT log them in. Instead, instruct them to contact you.
-        Alert.alert(
-          'Registration Successful!',
-          'Your account has been created. Please contact support to activate your subscription.'
-        );
-        setOwnerId('');
-        setPassword('');
-        
-      } else {
-        // --- FIX: Logic for EXISTING Owner Login ---
-        const ownerData = ownerSnap.data();
+      // Create their corresponding document in Firestore with an inactive status
+      const ownerRef = doc(db, 'owners', user.uid);
+      await setDoc(ownerRef, {
+        email: user.email,
+        subscriptionStatus: "inactive"
+      });
+      
+      Alert.alert(
+        'Verification Email Sent!',
+        'Your account has been created. Please check your email and click the verification link to continue.'
+      );
+      setEmail('');
+      setPassword('');
 
-        // First, check the password.
-        if (ownerData.password !== password) {
-          Alert.alert('Login Failed', 'The password you entered is incorrect. Please try again.');
-          setIsLoading(false);
-          return; // Stop the function here.
-        }
-        
-        // If password is correct, now check the subscription.
-        if (ownerData.subscriptionStatus !== 'active') {
-          Alert.alert(
-            'Subscription Inactive',
-            'Your account is not active. Please contact support to activate or renew your subscription.'
-          );
-          setIsLoading(false);
-          return; // Stop the function here.
-        }
-
-        // If both password and subscription are valid, log them in.
-        await AsyncStorage.setItem('ownerId', ownerId.trim());
-        await AsyncStorage.setItem('ownerPassword', password);
-        setIsRegistered(true);
-        Alert.alert('Welcome Back', `Successfully logged in as ${ownerId.trim()}.`);
-        router.replace('/');
-      }
     } catch (error: any) {
-      console.error('Owner login/registration error:', error);
-      Alert.alert('System Error', 'An unexpected error occurred. Please try again later.');
+      if (error.code === 'auth/email-already-in-use') {
+        Alert.alert('Registration Failed', 'This email address is already registered. Please try logging in.');
+      } else if (error.code === 'auth/weak-password') {
+        Alert.alert('Registration Failed', 'Password should be at least 6 characters.');
+      } else {
+        console.error('Registration error:', error);
+        Alert.alert('System Error', 'An unexpected error occurred during registration.');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    Alert.alert(
-      "Confirm Logout",
-      "Are you sure you want to log out? This will require you to log in again.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Log Out", 
-          style: "destructive", 
-          onPress: async () => {
-            await AsyncStorage.removeItem('ownerId');
-            await AsyncStorage.removeItem('ownerPassword');
-            setOwnerId('');
-            setPassword('');
-            setIsRegistered(false);
-          } 
-        }
-      ]
-    );
+  const handleLogin = async () => {
+    if (email.trim() === '' || password.trim() === '') {
+      Alert.alert('Validation Error', 'Both Email and Password are required.');
+      return;
+    }
+    Keyboard.dismiss();
+    setIsLoading(true);
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const user = userCredential.user;
+
+      // Reload the user object to get the latest emailVerified status
+      await user.reload();
+      
+      if (!user.emailVerified) {
+        Alert.alert(
+          "Email Not Verified",
+          "Please check your inbox and click the verification link before logging in. Would you like us to resend the link?",
+          [
+            { text: "Cancel", style: "cancel" },
+            { 
+              text: "Resend Email", 
+              onPress: () => sendEmailVerification(user) 
+            }
+          ]
+        );
+        auth.signOut();
+        setIsLoading(false);
+        return;
+      }
+
+      const ownerRef = doc(db, 'owners', user.uid);
+      const ownerSnap = await getDoc(ownerRef);
+
+      if (!ownerSnap.exists() || ownerSnap.data().subscriptionStatus !== 'active') {
+        Alert.alert('Subscription Inactive', 'Your account is not active. Please contact support.');
+        auth.signOut();
+      } else {
+        await AsyncStorage.setItem('ownerPassword', password);
+        Alert.alert('Welcome Back!', `Successfully logged in.`);
+        router.replace('/');
+      }
+    } catch (error: any) {
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        Alert.alert('Login Failed', 'Invalid email or password. Please try again or register.');
+      } else {
+        console.error('Login error:', error);
+        Alert.alert('System Error', 'An unexpected error occurred during login.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
+  const handlePasswordReset = () => {
+    Alert.prompt(
+      "Reset Password",
+      "Please enter your registered email address to receive a password reset link.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send Link",
+          onPress: async (emailToReset) => {
+            if (emailToReset && emailToReset.includes('@')) {
+              try {
+                await sendPasswordResetEmail(auth, emailToReset.trim());
+                Alert.alert(
+                  "Check Your Email",
+                  `A password reset link has been sent to ${emailToReset}. Please follow the instructions in the email.`
+                );
+              } catch (error: any) {
+                console.error("Password reset error:", error);
+                Alert.alert("Error", "Could not send reset email. Please ensure the email address is correct and try again.");
+              }
+            } else {
+              Alert.alert("Invalid Email", "Please enter a valid email address.");
+            }
+          },
+        },
+      ],
+      'plain-text',
+      '',
+      'email-address'
+    );
+  };
+  
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.card}>
           <Ionicons name="shield-checkmark-outline" size={48} color="#007bff" style={{ alignSelf: 'center', marginBottom: 15 }} />
-          <Text style={styles.header}>Admin Login</Text>
-          <Text style={styles.subtitle}>
-            Enter your credentials to access the control panel.
-          </Text>
+          <Text style={styles.header}>Admin Portal</Text>
+          <Text style={styles.subtitle}>Log in or register for an admin account.</Text>
 
           <IconTextInput
-            iconName="person-outline"
-            placeholder="Owner ID"
-            value={ownerId}
-            onChangeText={setOwnerId}
+            iconName="mail-outline"
+            placeholder="Email Address"
+            value={email}
+            onChangeText={setEmail}
             autoCapitalize="none"
+            keyboardType="email-address"
           />
           <IconTextInput
             iconName="lock-closed-outline"
@@ -155,25 +194,23 @@ export default function OwnerScreen() {
             secureTextEntry
             value={password}
             onChangeText={setPassword}
-            onSubmitEditing={handleSubmit}
           />
-          <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={isLoading}>
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
+          
+          <TouchableOpacity style={styles.forgotButton} onPress={handlePasswordReset}>
+            <Text style={styles.forgotButtonText}>Forgot Password?</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={isLoading}>
+            {isLoading ? <ActivityIndicator color="#fff" /> : (
               <>
                 <Ionicons name="log-in-outline" size={22} color="#fff" />
-                <Text style={styles.buttonText}>
-                  {isRegistered ? 'Login' : 'Register & Proceed'}
-                </Text>
+                <Text style={styles.buttonText}>Login</Text>
               </>
             )}
           </TouchableOpacity>
-          {isRegistered && (
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Text style={styles.logoutButtonText}>Log out from this device</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={[styles.button, styles.registerButton]} onPress={handleRegistration} disabled={isLoading}>
+            <Text style={styles.registerButtonText}>Register New Account</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </TouchableWithoutFeedback>
@@ -181,80 +218,17 @@ export default function OwnerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1, 
-    backgroundColor: '#f0f2f5',
-    padding: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  card: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  header: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    textAlign: 'center',
-    color: '#1c1c1e',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8f8f8',
-    borderWidth: 1,
-    borderColor: '#e8e8e8',
-    borderRadius: 12,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    height: 55,
-    fontSize: 16,
-    color: '#333',
-  },
-  button: {
-    flexDirection: 'row',
-    backgroundColor: '#007bff',
-    paddingVertical: 15,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-  buttonText: {
-    textAlign: 'center',
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 10,
-  },
-  logoutButton: {
-    marginTop: 20,
-    padding: 10,
-  },
-  logoutButtonText: {
-    textAlign: 'center',
-    color: '#6c757d',
-    fontSize: 14,
-  },
+  container: { flexGrow: 1, backgroundColor: '#f0f2f5', padding: 20, justifyContent: 'center', alignItems: 'center', },
+  card: { width: '100%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 16, padding: 24, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, },
+  header: { fontSize: 28, fontWeight: 'bold', marginBottom: 8, textAlign: 'center', color: '#1c1c1e', },
+  subtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 30, },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, marginBottom: 16, paddingHorizontal: 12, },
+  inputIcon: { marginRight: 10, },
+  input: { flex: 1, height: 55, fontSize: 16, color: '#333', },
+  button: { flexDirection: 'row', backgroundColor: '#007bff', paddingVertical: 15, borderRadius: 12, alignItems: 'center', justifyContent: 'center', },
+  buttonText: { textAlign: 'center', color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 10, },
+  registerButton: { marginTop: 15, backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#007bff', },
+  registerButtonText: { color: '#007bff', fontSize: 16, fontWeight: '600', },
+  forgotButton: { alignSelf: 'flex-end', paddingVertical: 10, marginBottom: 5, },
+  forgotButtonText: { color: '#007bff', fontSize: 14, },
 });

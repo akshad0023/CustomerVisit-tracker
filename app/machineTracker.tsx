@@ -1,12 +1,14 @@
-// app/machineTracker.tsx
+// app/machinetracker.tsx
 
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+// NEW: Import the auth functions
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { db } from '../firebaseConfig';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+// NEW: Import the auth instance
+import { auth, db } from '../firebaseConfig';
 
 interface Shift {
   id: string;
@@ -17,7 +19,7 @@ interface Shift {
   totalIn: number;
   totalOut: number;
   totalMatchedAmount: number;
-  profitOrLoss: number; // This value is calculated as (Total Out - Total In) on the shift page
+  profitOrLoss: number;
 }
 
 interface SummaryRowProps {
@@ -41,30 +43,47 @@ const SummaryRow: React.FC<SummaryRowProps> = ({ label, value, valueColor = '#33
 export default function MachineTracker() {
   const [shiftData, setShiftData] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false); // The new security gate state
   const router = useRouter();
 
+  // EFFECT 1: Security Gate
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsReady(true); // It's safe to fetch data now
+      } else {
+        router.replace('/owner');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  // EFFECT 2: Data Fetcher
+  useEffect(() => {
+    if (!isReady) return; // Don't run if the user isn't authenticated yet
+
     const fetchShiftData = async () => {
+      setLoading(true);
       try {
-        const ownerId = await AsyncStorage.getItem('ownerId');
-        if (!ownerId) {
-          setLoading(false);
-          return;
-        }
+        const user = auth.currentUser;
+        if (!user) throw new Error("User not found");
+        const ownerId = user.uid;
+
         const q = query(collection(db, 'owners', ownerId, 'shifts'), orderBy('startTime', 'desc'));
         const snapshot = await getDocs(q);
         const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Shift[];
         setShiftData(data);
       } catch (error) {
         console.error('Error fetching shift data:', error);
+        Alert.alert("Error", "Could not load shift history.");
       } finally {
         setLoading(false);
       }
     };
     fetchShiftData();
-  }, []);
+  }, [isReady]); // This effect depends on the security gate
 
-  if (loading) {
+  if (!isReady || loading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#007bff" />
@@ -74,11 +93,7 @@ export default function MachineTracker() {
   }
 
   const renderShiftCard = ({ item }: { item: Shift }) => {
-    // FIX: The profit/loss for the business is Total In - Total Out.
-    // We recalculate it here for display purposes, ignoring the stored `profitOrLoss`
-    // to ensure the logic is always correct on this screen.
     const businessProfit = (item.totalIn || 0) - (item.totalOut || 0);
-
     const resultColor = businessProfit >= 0 ? '#28a745' : '#dc3545';
     const profitLabel = businessProfit >= 0 ? 'Profit' : 'Loss';
     
@@ -145,105 +160,23 @@ export default function MachineTracker() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f0f2f5',
-    paddingTop: 10,
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    marginTop: 40,
-  },
-  header: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#1c1c1e',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 50,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 18,
-    color: 'gray',
-  },
-  card: {
-    backgroundColor: '#fff',
-    padding: 16,
-    marginHorizontal: 10,
-    marginVertical: 8,
-    borderRadius: 12,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  cardHeader: {
-    marginBottom: 12,
-  },
-  employeeName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#111',
-  },
-  timeText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#e9ecef',
-    marginVertical: 12,
-  },
-  machineSection: {
-    marginVertical: 5,
-  },
-  machineTableHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#dee2e6',
-  },
-  tableHeaderText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#495057',
-  },
-  machineTableRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  machineTableCell: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-  },
-  summaryContainer: {
-    marginTop: 12,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  summaryLabel: {
-    fontSize: 16,
-    color: '#495057',
-  },
-  summaryValue: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
+  container: { flex: 1, backgroundColor: '#f0f2f5', paddingTop: 10, },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10, marginTop: 40, },
+  header: { fontSize: 26, fontWeight: 'bold', color: '#1c1c1e', },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, },
+  loadingText: { marginTop: 10, fontSize: 18, color: 'gray', },
+  card: { backgroundColor: '#fff', padding: 16, marginHorizontal: 10, marginVertical: 8, borderRadius: 12, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, },
+  cardHeader: { marginBottom: 12, },
+  employeeName: { fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: '#111', },
+  timeText: { fontSize: 14, color: '#666', },
+  divider: { height: 1, backgroundColor: '#e9ecef', marginVertical: 12, },
+  machineSection: { marginVertical: 5, },
+  machineTableHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#dee2e6', },
+  tableHeaderText: { fontSize: 14, fontWeight: '600', color: '#495057', },
+  machineTableRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, },
+  machineTableCell: { flex: 1, fontSize: 16, color: '#333', },
+  summaryContainer: { marginTop: 12, },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, },
+  summaryLabel: { fontSize: 16, color: '#495057', },
+  summaryValue: { fontSize: 16, fontWeight: '500', },
 });

@@ -1,13 +1,13 @@
 // app/visitHistory.tsx
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-// NEW: Import dayjs and the 'where' function
 import dayjs from 'dayjs';
+import { useRouter } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert, // FIX: Alert has been added to the import list.
   FlatList,
   StyleSheet,
   Text,
@@ -16,7 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { db } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 
 interface Visit {
   id: string;
@@ -39,29 +39,39 @@ const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => 
 
 const VisitHistoryScreen = () => {
   const [loading, setLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredVisits, setFilteredVisits] = useState<Visit[]>([]);
   const router = useRouter();
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsReady(true);
+      } else {
+        router.replace('/owner');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  useEffect(() => {
+    if (!isReady) return;
+
     const fetchVisits = async () => {
+      setLoading(true);
       try {
-        const ownerId = await AsyncStorage.getItem('ownerId');
-        if (!ownerId) throw new Error('Owner not logged in');
+        const user = auth.currentUser;
+        if (!user) throw new Error('Owner not logged in');
+        const ownerId = user.uid;
 
-        // --- FIX: Logic to fetch visits only for the current day ---
-        const today = dayjs().format('YYYY-MM-DD'); // Get today's date as a string
-
+        const today = dayjs().format('YYYY-MM-DD');
         const q = query(
           collection(db, `owners/${ownerId}/visitHistory`),
-          // Only get documents where the 'lastUsed' field is exactly today's date
           where('lastUsed', '==', today),
-          // You can still order by timestamp if you want the most recent of today's visits first
           orderBy('timestamp', 'desc')
         );
-        // --- End of Fix ---
-
         const snapshot = await getDocs(q);
         const data: Visit[] = snapshot.docs.map(doc => {
           const v = doc.data();
@@ -73,13 +83,14 @@ const VisitHistoryScreen = () => {
         setFilteredVisits(data);
       } catch (error) {
         console.error('Error fetching visit history:', error);
+        Alert.alert("Error", "Could not fetch visit history.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchVisits();
-  }, []); // This effect runs once when the screen loads
+  }, [isReady]);
 
   useEffect(() => {
     if (searchQuery === '') {
@@ -116,7 +127,7 @@ const VisitHistoryScreen = () => {
     </View>
   );
 
-  if (loading) {
+  if (!isReady || loading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#007bff" />
@@ -128,7 +139,6 @@ const VisitHistoryScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
-        {/* UPDATED: Title changed for clarity */}
         <Text style={styles.header}>Today's Visits</Text>
         <TouchableOpacity onPress={() => router.push('/')}>
           <Ionicons name="home-outline" size={28} color="#007bff" />

@@ -1,12 +1,12 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
-// FIX: Added useEffect to the React import
+// app/customerinfo.tsx
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -16,8 +16,7 @@ import {
   View,
 } from 'react-native';
 import ImageView from 'react-native-image-viewing';
-import { db } from '../firebaseConfig';
-
+import { auth, db } from '../firebaseConfig';
 
 interface Customer {
   id: string;
@@ -36,8 +35,9 @@ const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => 
   </View>
 );
 
-export default function CustomerInfo() {
+export default function CustomerInfoPage() {
   const [loading, setLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
@@ -45,47 +45,46 @@ export default function CustomerInfo() {
   const [modalVisible, setModalVisible] = useState(false);
   const router = useRouter();
 
-  const images = customers
-    .filter(customer => customer.idImageUrl)
-    .map(customer => ({ uri: customer.idImageUrl! }));
+  // FIX: This derived state will now only contain customers with images, making indexing easier
+  const customersWithImages = filteredCustomers.filter(c => c.idImageUrl);
 
-  useFocusEffect(
-    useCallback(() => {
-      let isActive = true;
-      const fetchData = async () => {
-        setLoading(true);
-        try {
-          const ownerId = await AsyncStorage.getItem('ownerId');
-          if (!ownerId) {
-            console.warn('Owner ID not found.');
-            setLoading(false);
-            return;
-          }
-          const customerQuery = query(
-            collection(db, 'owners', ownerId, 'customers'),
-            orderBy('name', 'asc')
-          );
-          const snapshot = await getDocs(customerQuery);
-          if (!isActive) return;
-
-          const data = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Customer[];
-          setCustomers(data);
-          setFilteredCustomers(data);
-        } catch (error) {
-          console.error('Error fetching customer info:', error);
-        } finally {
-          if (isActive) setLoading(false);
-        }
-      };
-      fetchData();
-      return () => {
-        isActive = false;
-      };
-    }, [])
-  );
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsReady(true);
+      } else {
+        router.replace('/owner');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+  
+  useEffect(() => {
+    if (!isReady) return;
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Owner not logged in");
+        const ownerId = user.uid;
+        
+        const customerQuery = query(
+          collection(db, 'owners', ownerId, 'customers'),
+          orderBy('name', 'asc')
+        );
+        const snapshot = await getDocs(customerQuery);
+        const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Customer[];
+        setCustomers(data);
+        setFilteredCustomers(data);
+      } catch (error) {
+        console.error('Error fetching customer info:', error);
+        Alert.alert("Error", "Could not fetch customer information.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [isReady]);
 
   useEffect(() => {
     if (searchQuery === '') {
@@ -98,16 +97,17 @@ export default function CustomerInfo() {
     }
   }, [searchQuery, customers]);
 
-
-  const openImageModal = (customerImageUrl: string) => {
-    const imageIndex = images.findIndex(img => img.uri === customerImageUrl);
+  // FIX: Simplified image opening logic
+  const openImageModal = (customer: Customer) => {
+    // Find the index of the clicked customer within the list of customers that HAVE images
+    const imageIndex = customersWithImages.findIndex(c => c.id === customer.id);
     if (imageIndex !== -1) {
       setCurrentImageIndex(imageIndex);
       setModalVisible(true);
     }
   };
 
-  if (loading) {
+  if (!isReady || loading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" />
@@ -128,7 +128,8 @@ export default function CustomerInfo() {
       </View>
       <View style={styles.divider} />
       {item.idImageUrl ? (
-        <TouchableOpacity style={styles.viewIdButton} onPress={() => openImageModal(item.idImageUrl!)}>
+        // Pass the entire 'item' object to the handler
+        <TouchableOpacity style={styles.viewIdButton} onPress={() => openImageModal(item)}>
           <Ionicons name="card-outline" size={20} color="#fff" />
           <Text style={styles.viewIdButtonText}>View ID</Text>
         </TouchableOpacity>
@@ -161,13 +162,15 @@ export default function CustomerInfo() {
       </View>
 
       <ImageView
-        images={images}
+        // FIX: The images prop now correctly maps over the customersWithImages array
+        images={customersWithImages.map(c => ({ uri: c.idImageUrl! }))}
         imageIndex={currentImageIndex}
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
         FooterComponent={({ imageIndex }) => (
             <View style={styles.footerContainer}>
-                <Text style={styles.footerText}>{customers.find(c => c.idImageUrl === images[imageIndex]?.uri)?.name}</Text>
+                {/* Find the name from the same filtered list */}
+                <Text style={styles.footerText}>{customersWithImages[imageIndex]?.name}</Text>
             </View>
         )}
       />
@@ -189,7 +192,7 @@ export default function CustomerInfo() {
   );
 }
 
-// ... styles remain the same
+
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 

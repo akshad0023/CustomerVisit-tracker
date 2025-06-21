@@ -2,20 +2,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+// NEW: Import onAuthStateChanged
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDocs, setDoc, Timestamp } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TextInputProps,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { db } from '../firebaseConfig';
+// NEW: Import the auth instance
+import { auth, db } from '../firebaseConfig';
 
 interface IconTextInputProps extends TextInputProps {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -37,8 +40,25 @@ export default function EmployeeShift() {
   const [startTime, setStartTime] = useState<string | null>(null); 
   const [newMachine, setNewMachine] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // NEW: Add a state for the security gate
+  const [isReady, setIsReady] = useState(false);
 
+  // EFFECT 1: Security Gate - Runs first to check for an authenticated user
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsReady(true); // Open the gate, it's safe to proceed
+      } else {
+        router.replace('/owner');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+  
+  // EFFECT 2: Restore Shift State - Only runs AFTER the security gate is open
+  useEffect(() => {
+    if (!isReady) return; // Don't run until the auth check is complete
+
     const restoreShiftState = async () => {
       const savedShift = await AsyncStorage.getItem('ongoingShift');
       if (savedShift) {
@@ -52,7 +72,7 @@ export default function EmployeeShift() {
       }
     };
     restoreShiftState();
-  }, []);
+  }, [isReady]); // Dependency on isReady is crucial
 
   const addMachine = () => {
     if (!newMachine.trim()) return;
@@ -68,7 +88,6 @@ export default function EmployeeShift() {
     setNewMachine('');
   };
 
-  // NEW: Function to handle deleting a machine from the list
   const handleDeleteMachine = (machineToDelete: string) => {
     Alert.alert(
       "Confirm Deletion",
@@ -82,7 +101,6 @@ export default function EmployeeShift() {
             setMachineData((prev) => {
               const updatedData = { ...prev };
               delete updatedData[machineToDelete];
-              // Also update AsyncStorage to persist the deletion
               AsyncStorage.mergeItem('ongoingShift', JSON.stringify({ machineData: updatedData }));
               return updatedData;
             });
@@ -122,6 +140,14 @@ export default function EmployeeShift() {
     }
   };
 
+  const handleMachineInput = (machine: string, type: 'in' | 'out', value: string) => {
+    setMachineData((prev) => {
+      const updated = { ...prev, [machine]: { ...prev[machine], [type]: value } };
+      AsyncStorage.mergeItem('ongoingShift', JSON.stringify({ machineData: updated }));
+      return updated;
+    });
+  };
+
   const handleSaveShift = async () => {
     setIsSubmitting(true);
     try {
@@ -133,12 +159,16 @@ export default function EmployeeShift() {
         setIsSubmitting(false);
         return;
       }
-      const ownerId = await AsyncStorage.getItem('ownerId');
-      if (!ownerId) throw new Error('Owner ID not found');
+      
+      const user = auth.currentUser;
+      if (!user) {
+        // This throw should ideally never be reached because of the security gate
+        throw new Error('Owner not logged in. Please restart the app.');
+      }
+      const ownerId = user.uid;
 
       const endTime = new Date();
       const shiftStartDate = startTime ? new Date(startTime) : null;
-
       let totalIn = 0;
       let totalOut = 0;
       const machines: { [key: string]: { in: number, out: number } } = {};
@@ -149,7 +179,8 @@ export default function EmployeeShift() {
         totalIn += inNum;
         totalOut += outNum;
       });
-      const profitOrLoss = totalOut - totalIn;
+      
+      const profitOrLoss = totalIn - totalOut;
       const carryForward = totalOut;
       const visitSnapshot = await getDocs(collection(db, `owners/${ownerId}/visitHistory`));
       let totalMatchedAmount = 0;
@@ -191,14 +222,15 @@ export default function EmployeeShift() {
     }
   };
 
-  const handleMachineInput = (machine: string, type: 'in' | 'out', value: string) => {
-    setMachineData((prev) => {
-      const updated = { ...prev, [machine]: { ...prev[machine], [type]: value } };
-      AsyncStorage.mergeItem('ongoingShift', JSON.stringify({ machineData: updated }));
-      return updated;
-    });
-  };
-
+  // Show a loading screen until the auth check is complete
+  if (!isReady) {
+    return (
+        <View style={styles.centered}>
+            <ActivityIndicator size="large" color="#007bff" />
+        </View>
+    );
+  }
+  
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.headerContainer}>
@@ -263,7 +295,6 @@ export default function EmployeeShift() {
                   <Text style={[styles.machineCell, styles.machineHeadertext]}>Machine</Text>
                   <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>In ($)</Text>
                   <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>Out ($)</Text>
-                  {/* Empty header for the delete button column */}
                   <View style={styles.deleteButtonHeader} /> 
                 </View>
                 {Object.keys(machineData).sort((a,b) => parseInt(a) - parseInt(b)).map((machine) => (
@@ -271,7 +302,6 @@ export default function EmployeeShift() {
                     <Text style={[styles.machineCell, styles.machineLabel]}>{machine}</Text>
                     <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.in || ''} onChangeText={(text) => handleMachineInput(machine, 'in', text)} />
                     <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.out || ''} onChangeText={(text) => handleMachineInput(machine, 'out', text)} />
-                    {/* NEW: Delete button for each machine row */}
                     <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteMachine(machine)}>
                       <Ionicons name="trash-outline" size={22} color="#dc3545" />
                     </TouchableOpacity>
@@ -279,8 +309,6 @@ export default function EmployeeShift() {
                 ))}
               </View>
             )}
-
-            {/* REMOVED: All the summary and profit/loss calculation views have been removed. */}
             
             <TouchableOpacity style={[styles.button, styles.successButton]} onPress={handleSaveShift} disabled={isSubmitting}>
               {isSubmitting ? <ActivityIndicator color="#fff"/> :
@@ -297,8 +325,10 @@ export default function EmployeeShift() {
   );
 }
 
+// Styles remain the same
 const styles = StyleSheet.create({
   container: { padding: 10, backgroundColor: '#f0f2f5', flexGrow: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10, marginTop: 40 },
   header: { fontSize: 26, fontWeight: 'bold', color: '#1c1c1e' },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginVertical: 10, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 5 },
@@ -319,19 +349,11 @@ const styles = StyleSheet.create({
   addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   machineTable: { borderWidth: 1, borderColor: '#e9ecef', borderRadius: 8, overflow: 'hidden', marginBottom: 20 },
   machineTableHeader: { flexDirection: 'row', backgroundColor: '#f8f9fa', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
-  machineHeadertext: { fontWeight: 'bold', color: '#495057' },
+  machineHeadertext: { fontWeight: 'bold', color: '#495057', padding: 12, flex: 1, },
   machineRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
   machineCell: { padding: 12, fontSize: 16, flex: 1 },
   machineLabel: { fontWeight: '500', color: '#333' },
   machineInput: { backgroundColor: '#fff', textAlign: 'center', borderLeftWidth: 1, borderLeftColor: '#e9ecef' },
-  // NEW: Styles for the delete button and its header column
-  deleteButton: {
-    padding: 12,
-    borderLeftWidth: 1,
-    borderLeftColor: '#e9ecef',
-  },
-  deleteButtonHeader: {
-    padding: 12,
-    width: 46, // Match the width of the button for alignment
-  },
+  deleteButton: { padding: 12, borderLeftWidth: 1, borderLeftColor: '#e9ecef', },
+  deleteButtonHeader: { padding: 12, width: 46, },
 });

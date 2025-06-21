@@ -3,24 +3,24 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDocs, query, setDoc, Timestamp, where } from 'firebase/firestore';
-// NEW: Import useRef, useMemo for calendar logic
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView, // We will use a ScrollView for the auth screen
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-// NEW: Import the Calendar component
 import { Calendar, DateData } from 'react-native-calendars';
-import { db } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 
 interface DailyReport {
   date: string;
@@ -40,80 +40,126 @@ const SummaryRow: React.FC<{ label: string; value: string; valueColor?: string; 
 
 export default function ProfitLossScreen() {
   const router = useRouter();
+  
+  // State Management
+  const [isReady, setIsReady] = useState(false); // Is user logged in via Firebase?
+  const [hasReportingPass, setHasReportingPass] = useState<boolean | null>(null); // Do they have a reporting password set? Starts as null.
+  const [isAuthorized, setIsAuthorized] = useState(false); // Have they entered it correctly this session?
+
+  const [passwordInput, setPasswordInput] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  
+  const [authLoading, setAuthLoading] = useState(true); // True by default until we check storage
   const [loading, setLoading] = useState(true);
+  
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
-
-  // --- State for Security Gate ---
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
-
-  // --- State for Calendar Modal and List Scrolling ---
   const [isCalendarVisible, setCalendarVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-
-  // --- State for Add Expense Modal ---
   const [isExpenseModalVisible, setExpenseModalVisible] = useState(false);
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseNotes, setExpenseNotes] = useState('');
   const [expenseDate, setExpenseDate] = useState('');
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
+  
+  // Effect 1: Checks Firebase Auth and then checks for the reporting password
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setIsReady(true);
+        const storedPassword = await AsyncStorage.getItem('reportingPassword');
+        setHasReportingPass(!!storedPassword);
+        setAuthLoading(false); 
+      } else {
+        router.replace('/owner');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
-  const fetchAndProcessData = useCallback(async (month: Date) => {
-    setLoading(true);
-    try {
-        const ownerId = await AsyncStorage.getItem('ownerId');
-        if (!ownerId) throw new Error("Owner ID not found");
-        const startOfMonth = dayjs(month).startOf('month').toDate();
-        const endOfMonth = dayjs(month).endOf('month').toDate();
-        const dailyData = new Map<string, Omit<DailyReport, 'netProfit'>>();
-        const shiftsQuery = query(collection(db, `owners/${ownerId}/shifts`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
-        const shiftsSnapshot = await getDocs(shiftsQuery);
-        shiftsSnapshot.forEach(doc => {
-            const shift = doc.data();
-            const dateStr = dayjs(shift.endTime).format('YYYY-MM-DD');
-            const day = dailyData.get(dateStr) || { date: dateStr, shiftProfitLoss: 0, totalMatchedAmount: 0, totalExpenses: 0, expenseNotes: [] as string[] };
-            day.shiftProfitLoss += (shift.totalIn || 0) - (shift.totalOut || 0);
-            day.totalMatchedAmount += shift.totalMatchedAmount || 0;
-            dailyData.set(dateStr, day);
-        });
-        const expensesQuery = query(collection(db, `owners/${ownerId}/dailyExpenses`), where('date', '>=', dayjs(startOfMonth).format('YYYY-MM-DD')), where('date', '<=', dayjs(endOfMonth).format('YYYY-MM-DD')));
-        const expensesSnapshot = await getDocs(expensesQuery);
-        expensesSnapshot.forEach(doc => {
-            const expense = doc.data();
-            const dateStr = expense.date;
-            const day = dailyData.get(dateStr) || { date: dateStr, shiftProfitLoss: 0, totalMatchedAmount: 0, totalExpenses: 0, expenseNotes: [] as string[] };
-            day.totalExpenses += expense.amount || 0;
-            if (expense.notes) {
-                day.expenseNotes.push(expense.notes);
-            }
-            dailyData.set(dateStr, day);
-        });
-        const finalReports: DailyReport[] = Array.from(dailyData.values()).map(day => ({ ...day, netProfit: day.shiftProfitLoss - day.totalMatchedAmount - day.totalExpenses, })).sort((a, b) => b.date.localeCompare(a.date));
-        setReports(finalReports);
-    } catch (error) {
-        console.error("Error fetching report data:", error);
-        Alert.alert("Error", "Could not fetch report data.");
-    } finally {
-        setLoading(false);
-    }
-  }, []);
-
+  // Effect 2: Fetches data only after full authorization
   useEffect(() => {
     if (isAuthorized) {
       fetchAndProcessData(selectedMonth);
     }
-  }, [selectedMonth, isAuthorized, fetchAndProcessData]);
-  
-  const handleUnlock = async () => {
+  }, [selectedMonth, isAuthorized]);
+
+  const fetchAndProcessData = useCallback(async (month: Date) => {
+    setLoading(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not logged in");
+      const ownerId = user.uid;
+      const startOfMonth = dayjs(month).startOf('month').toDate();
+      const endOfMonth = dayjs(month).endOf('month').toDate();
+      const dailyData = new Map<string, Omit<DailyReport, 'netProfit'>>();
+
+      const shiftsQuery = query(collection(db, `owners/${ownerId}/shifts`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
+      const shiftsSnapshot = await getDocs(shiftsQuery);
+      shiftsSnapshot.forEach(doc => {
+        const shift = doc.data();
+        const dateStr = dayjs(shift.endTime).format('YYYY-MM-DD');
+        const day = dailyData.get(dateStr) || { date: dateStr, shiftProfitLoss: 0, totalMatchedAmount: 0, totalExpenses: 0, expenseNotes: [] as string[] };
+        day.shiftProfitLoss += (shift.totalIn || 0) - (shift.totalOut || 0);
+        day.totalMatchedAmount += shift.totalMatchedAmount || 0;
+        dailyData.set(dateStr, day);
+      });
+
+      const expensesQuery = query(collection(db, `owners/${ownerId}/dailyExpenses`), where('date', '>=', dayjs(startOfMonth).format('YYYY-MM-DD')), where('date', '<=', dayjs(endOfMonth).format('YYYY-MM-DD')));
+      const expensesSnapshot = await getDocs(expensesQuery);
+      expensesSnapshot.forEach(doc => {
+        const expense = doc.data();
+        const dateStr = expense.date;
+        const day = dailyData.get(dateStr) || { date: dateStr, shiftProfitLoss: 0, totalMatchedAmount: 0, totalExpenses: 0, expenseNotes: [] as string[] };
+        day.totalExpenses += expense.amount || 0;
+        if (expense.notes) { day.expenseNotes.push(expense.notes); }
+        dailyData.set(dateStr, day);
+      });
+
+      const finalReports: DailyReport[] = Array.from(dailyData.values()).map(day => ({ ...day, netProfit: day.shiftProfitLoss - day.totalMatchedAmount - day.totalExpenses, })).sort((a, b) => b.date.localeCompare(a.date));
+      setReports(finalReports);
+    } catch (error) {
+      console.error("Error fetching report data:", error);
+      Alert.alert("Error", "Could not fetch report data.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleCreatePassword = async () => {
+    if (newPassword.trim().length < 4) {
+      Alert.alert('Password Too Short', 'Your reporting password must be at least 4 characters long.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      Alert.alert('Passwords Do Not Match', 'Please re-enter your password to confirm.');
+      return;
+    }
     setAuthLoading(true);
     try {
-      const storedPassword = await AsyncStorage.getItem('ownerPassword');
+      await AsyncStorage.setItem('reportingPassword', newPassword.trim());
+      setHasReportingPass(true);
+      setIsAuthorized(true);
+    } catch (e) {
+      Alert.alert("Error", "Could not save the password.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+  
+  const handleUnlock = async () => {
+    if (!passwordInput) {
+      Alert.alert("Input Required", "Please enter your reporting password.");
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const storedPassword = await AsyncStorage.getItem('reportingPassword');
       if (passwordInput === storedPassword) {
         setIsAuthorized(true);
       } else {
-        Alert.alert("Access Denied", "The password you entered is incorrect.");
+        Alert.alert("Access Denied", "The reporting password you entered is incorrect.");
       }
     } catch (e) {
       Alert.alert("Error", "Could not verify credentials.");
@@ -121,6 +167,25 @@ export default function ProfitLossScreen() {
       setAuthLoading(false);
       setPasswordInput('');
     }
+  };
+
+  // NEW: Forgot Password Logic
+  const handleForgotPassword = () => {
+    Alert.alert(
+      "Reset Reporting Password?",
+      "This will remove your old password and let you create a new one. Are you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Yes, Reset",
+          style: "destructive",
+          onPress: async () => {
+            await AsyncStorage.removeItem('reportingPassword');
+            setHasReportingPass(false); // Go back to the "Create Password" screen
+          }
+        }
+      ]
+    );
   };
 
   const handleDayPress = (day: DateData) => {
@@ -157,7 +222,6 @@ export default function ProfitLossScreen() {
   };
   
   const handleSaveExpense = async () => {
-    //... same as before
     const amount = parseFloat(expenseAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert("Invalid Amount", "Please enter a valid positive number.");
@@ -165,8 +229,9 @@ export default function ProfitLossScreen() {
     }
     setIsSubmittingExpense(true);
     try {
-      const ownerId = await AsyncStorage.getItem('ownerId');
-      if (!ownerId) throw new Error("Owner ID not found");
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not logged in");
+      const ownerId = user.uid;
       const newExpenseRef = doc(collection(db, `owners/${ownerId}/dailyExpenses`));
       await setDoc(newExpenseRef, { amount, notes: expenseNotes.trim(), date: expenseDate, timestamp: Timestamp.now() });
       setExpenseModalVisible(false);
@@ -199,27 +264,41 @@ export default function ProfitLossScreen() {
       </TouchableOpacity>
     </View>
   );
+  
+  if (!isReady || authLoading) {
+    return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
+  }
 
   if (!isAuthorized) {
     return (
-      <View style={styles.authContainer}>
-        <View style={styles.authCard}>
-          <Ionicons name="lock-closed-outline" size={40} color="#007bff" style={{ alignSelf: 'center' }}/>
-          <Text style={styles.authHeader}>Authorization Required</Text>
-          <Text style={styles.authSubtitle}>Enter the admin password to view this report.</Text>
-          <TextInput
-            style={styles.authInput}
-            placeholder="Password"
-            secureTextEntry
-            value={passwordInput}
-            onChangeText={setPasswordInput}
-            onSubmitEditing={handleUnlock}
-          />
-          <TouchableOpacity style={styles.authButton} onPress={handleUnlock} disabled={authLoading}>
-            {authLoading ? <ActivityIndicator color="#fff"/> : <Text style={styles.authButtonText}>Unlock</Text>}
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ScrollView contentContainerStyle={styles.authContainer}>
+        {hasReportingPass ? (
+          <View style={styles.authCard}>
+            <Ionicons name="lock-closed-outline" size={40} color="#007bff" style={{ alignSelf: 'center' }}/>
+            <Text style={styles.authHeader}>Report Access</Text>
+            <Text style={styles.authSubtitle}>Enter your reporting password to view this page.</Text>
+            <TextInput style={styles.authInput} placeholder="Reporting Password" secureTextEntry value={passwordInput} onChangeText={setPasswordInput} onSubmitEditing={handleUnlock} />
+            <TouchableOpacity style={styles.authButton} onPress={handleUnlock} disabled={authLoading}>
+              {authLoading ? <ActivityIndicator color="#fff"/> : <Text style={styles.authButtonText}>Unlock</Text>}
+            </TouchableOpacity>
+            {/* NEW: Forgot Password Button */}
+            <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotButton}>
+                <Text style={styles.forgotButtonText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.authCard}>
+            <Ionicons name="shield-outline" size={40} color="#28a745" style={{ alignSelf: 'center' }}/>
+            <Text style={styles.authHeader}>Set Up Reporting Password</Text>
+            <Text style={styles.authSubtitle}>Create a password to secure your financial reports. This is separate from your login password.</Text>
+            <TextInput style={styles.authInput} placeholder="Create Password (min 4 chars)" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
+            <TextInput style={styles.authInput} placeholder="Confirm Password" secureTextEntry value={confirmNewPassword} onChangeText={setConfirmNewPassword} onSubmitEditing={handleCreatePassword} />
+            <TouchableOpacity style={styles.authButton} onPress={handleCreatePassword} disabled={authLoading}>
+              {authLoading ? <ActivityIndicator color="#fff"/> : <Text style={styles.authButtonText}>Create and Continue</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
     );
   }
 
@@ -276,11 +355,7 @@ export default function ProfitLossScreen() {
               onDayPress={handleDayPress}
               monthFormat={'MMMM yyyy'}
               markedDates={markedDates}
-              theme={{
-                selectedDayBackgroundColor: '#007bff',
-                todayTextColor: '#007bff',
-                arrowColor: '#007bff',
-              }}
+              theme={{ selectedDayBackgroundColor: '#007bff', todayTextColor: '#007bff', arrowColor: '#007bff' }}
             />
           </Pressable>
         </Pressable>
@@ -312,6 +387,8 @@ const styles = StyleSheet.create({
   authInput: { borderWidth: 1, borderColor: '#ddd', padding: 12, borderRadius: 8, marginBottom: 15, fontSize: 16 },
   authButton: { backgroundColor: '#007bff', padding: 15, borderRadius: 8, alignItems: 'center' },
   authButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  forgotButton: { marginTop: 15, padding: 5 },
+  forgotButtonText: { fontSize: 14, color: '#6c757d', textAlign: 'center' },
   container: { flex: 1, backgroundColor: '#f0f2f5', paddingTop: 10 },
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10, marginTop: 40 },
   header: { fontSize: 26, fontWeight: 'bold', color: '#1c1c1e' },
