@@ -1,7 +1,6 @@
 // app/index.tsx
 
 import { Ionicons } from '@expo/vector-icons';
-// FIX: Import AsyncStorage to check for an active shift
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import dayjs from 'dayjs';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,6 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
 
 
@@ -76,11 +76,7 @@ export default function Login() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setLoading(false);
-      } else {
-        router.replace('/owner');
-      }
+      if (user) { setLoading(false); } else { router.replace('/owner'); }
     });
     return () => unsubscribe();
   }, [router]);
@@ -98,17 +94,11 @@ export default function Login() {
     clearCustomerInputs();
     setFormMode(null);
   };
-  
+
   const handleCaptureId = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (permissionResult.granted === false) {
-      Alert.alert('Camera access is required!');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.5,
-    });
+    if (permissionResult.granted === false) { Alert.alert('Camera access is required!'); return; }
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.5 });
     if (!result.canceled) {
       setIdImage(result.assets[0].uri);
       Alert.alert('Success', 'Photo Captured!');
@@ -122,19 +112,11 @@ export default function Login() {
     setIsSearching(true);
     setFoundCustomer(null);
     const user = auth.currentUser;
-    if (!user) {
-      Alert.alert("Error", "Not logged in.");
-      setIsSearching(false);
-      return;
-    }
+    if (!user) { Alert.alert("Error", "Not logged in."); setIsSearching(false); return; }
     const ref = collection(db, 'owners', user.uid, 'customers');
     try {
       if (lookupField === 'phone') {
-        if (!/^\d{10}$/.test(lookupValue)) {
-          Alert.alert('Invalid Phone', 'Phone number must be 10 digits.');
-          setIsSearching(false);
-          return;
-        }
+        if (!/^\d{10}$/.test(lookupValue)) { Alert.alert('Invalid Phone', 'Phone number must be 10 digits.'); setIsSearching(false); return; }
         const dRef = doc(ref, lookupValue);
         const dSnap = await getDoc(dRef);
         if (dSnap.exists()) {
@@ -150,9 +132,7 @@ export default function Login() {
         const q = query(ref, where('name', '==', lookupValue));
         const qSnap = await getDocs(q);
         const res = qSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Customer[];
-        if (res.length === 0) {
-          Alert.alert("Not Found", "No customers with this name.");
-        } else if (res.length === 1) {
+        if (res.length === 0) { Alert.alert("Not Found", "No customers with this name."); } else if (res.length === 1) {
           const cData = res[0];
           setFoundCustomer(cData);
           setName(cData.name);
@@ -175,7 +155,7 @@ export default function Login() {
     setPhone(customer.phone);
     setSearchModalVisible(false);
   };
-  
+
   const checkCredits = async () => {
     const isNew = formMode === 'new';
     const cPhone = isNew ? phone.trim() : foundCustomer?.phone;
@@ -184,19 +164,13 @@ export default function Login() {
     if (!user) { Alert.alert('Auth Error', 'Not logged in.'); return; }
     const ongoingShiftKey = `ongoingShift_${user.uid}`;
     const ongoingShift = await AsyncStorage.getItem(ongoingShiftKey);
-    if (!ongoingShift) {
-      Alert.alert('No Active Shift', 'Please start an employee shift before registering or checking in a customer.');
-      return;
-    }
-
+    if (!ongoingShift) { Alert.alert('No Active Shift', 'Please start an employee shift first.'); return; }
     if (formMode === null) { Alert.alert('Selection Required', 'Please select a customer type.'); return; }
     if (!cPhone || !/^\d{10}$/.test(cPhone)) { Alert.alert('Invalid Phone Number', 'Phone number must be exactly 10 digits.'); return; }
-
     if (!isNew) {
       if (!foundCustomer) { Alert.alert("Validation Error", "Please look up and confirm an existing customer."); return; }
       if (!matchAmount) { Alert.alert('Validation Error', 'Match amount is required for existing customers.'); return; }
     }
-
     if (isNew && !name) { Alert.alert('Validation Error', 'Please enter a name for the new customer.'); return; }
     
     setIsSubmitting(true);
@@ -246,16 +220,9 @@ export default function Login() {
       setIsSubmitting(false);
     }
   };
-  
-  const handleLogout = () => {
-    Alert.alert( "Confirm Logout", "Are you sure you want to log out?", [ { text: "Cancel", style: "cancel" }, { text: "Log Out", style: "destructive", onPress: async () => { await auth.signOut(); } } ] );
-  };
 
-  const handleChangeEmail = () => {
-    const user = auth.currentUser;
-    if (!user) return;
-    Alert.prompt( "Change Email Address", "Enter your new email address. You will be logged out and asked to verify the new address.", [ { text: "Cancel", style: "cancel" }, { text: "Confirm & Change", onPress: async (newEmail) => { if (newEmail && newEmail.includes('@')) { try { await updateEmail(user, newEmail.trim()); await sendEmailVerification(user); Alert.alert( "Success!", `Verification link sent to ${newEmail}. You will be logged out.` ); auth.signOut(); } catch (e) { Alert.alert("Error", "Could not change email."); } } else { Alert.alert("Invalid Email", "Please enter a valid new email address."); } } } ], 'plain-text', '', 'email-address' );
-  };
+  const handleLogout = () => { Alert.alert( "Confirm Logout", "Are you sure?", [ { text: "Cancel", style: "cancel" }, { text: "Log Out", style: "destructive", onPress: async () => { await auth.signOut(); } } ] ); };
+  const handleChangeEmail = () => { const user = auth.currentUser; if (!user) return; Alert.prompt( "Change Email", "Enter your new email address.", [ { text: "Cancel", style: "cancel" }, { text: "Confirm", onPress: async (newEmail) => { if (newEmail && newEmail.includes('@')) { try { await updateEmail(user, newEmail.trim()); await sendEmailVerification(user); Alert.alert( "Success!", `Verification link sent to ${newEmail}. You will be logged out.` ); auth.signOut(); } catch (e) { Alert.alert("Error", "Could not change email."); } } else { Alert.alert("Invalid Email", "Please enter a valid new email address."); } } } ], 'plain-text', '', 'email-address' ); };
 
   if (loading) {
     return (
@@ -266,7 +233,7 @@ export default function Login() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <TouchableOpacity style={styles.menuButton} onPress={() => setMenuVisible(true)}>
         <Ionicons name="menu" size={32} color="#333" />
       </TouchableOpacity>
@@ -298,10 +265,6 @@ export default function Login() {
               <Text style={styles.menuItemText}>Profit & Loss</Text>
             </TouchableOpacity>
             <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={handleChangeEmail}>
-              <Ionicons name="mail-outline" size={22} color="#444" style={styles.menuIcon} />
-              <Text style={styles.menuItemText}>Change Login Email</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
               <Ionicons name="log-out-outline" size={22} color="#dc3545" style={styles.menuIcon} />
               <Text style={[styles.menuItemText, { color: '#dc3545' }]}>Logout</Text>
@@ -402,7 +365,7 @@ export default function Login() {
           {message !== '' && <Text style={styles.message}>{message}</Text>}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -429,10 +392,10 @@ const styles = StyleSheet.create({
   submitButton: { backgroundColor: '#28a745' },
   submitButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
   message: { marginTop: 20, fontSize: 16, textAlign: 'center', paddingHorizontal: 10, fontWeight: '500' },
-  menuButton: { position: 'absolute', top: 50, left: 20, zIndex: 20, padding: 5 },
-  resetButton: { position: 'absolute', top: 50, right: 20, zIndex: 20, padding: 5 },
+  menuButton: { position: 'absolute', top:100, left: 15, zIndex: 20, padding: 5 },
+  resetButton: { position: 'absolute', top: 100, right: 15, zIndex: 20, padding: 5 },
   modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  menuContainer: { backgroundColor: '#fff', borderRadius: 10, padding: 8, position: 'absolute', top: 90, left: 15, minWidth: 240, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+  menuContainer: { backgroundColor: '#fff', borderRadius: 10, padding: 8, position: 'absolute', top: 55, left: 15, minWidth: 240, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },
   menuIcon: { marginRight: 15 },
   menuItemText: { fontSize: 17, color: '#333' },
