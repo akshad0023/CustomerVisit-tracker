@@ -2,7 +2,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-// Import all necessary Firebase Auth functions
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -49,28 +48,21 @@ export default function OwnerScreen() {
     }
     Keyboard.dismiss();
     setIsLoading(true);
-
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
-
-      // Immediately send the verification email
       await sendEmailVerification(user);
-
-      // Create their corresponding document in Firestore with an inactive status
       const ownerRef = doc(db, 'owners', user.uid);
       await setDoc(ownerRef, {
         email: user.email,
         subscriptionStatus: "inactive"
       });
-      
       Alert.alert(
         'Verification Email Sent!',
         'Your account has been created. Please check your email and click the verification link to continue.'
       );
       setEmail('');
       setPassword('');
-
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
         Alert.alert('Registration Failed', 'This email address is already registered. Please try logging in.');
@@ -92,12 +84,9 @@ export default function OwnerScreen() {
     }
     Keyboard.dismiss();
     setIsLoading(true);
-
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
-
-      // Reload the user object to get the latest emailVerified status
       await user.reload();
       
       if (!user.emailVerified) {
@@ -106,10 +95,7 @@ export default function OwnerScreen() {
           "Please check your inbox and click the verification link before logging in. Would you like us to resend the link?",
           [
             { text: "Cancel", style: "cancel" },
-            { 
-              text: "Resend Email", 
-              onPress: () => sendEmailVerification(user) 
-            }
+            { text: "Resend Email", onPress: () => sendEmailVerification(user) }
           ]
         );
         auth.signOut();
@@ -124,7 +110,22 @@ export default function OwnerScreen() {
         Alert.alert('Subscription Inactive', 'Your account is not active. Please contact support.');
         auth.signOut();
       } else {
+        // --- THIS IS THE UPDATED LOGIC ---
+        // After a successful login, check if the password has changed.
+        const lastKnownPassword = await AsyncStorage.getItem('ownerPassword');
+        if (lastKnownPassword && lastKnownPassword !== password) {
+          // If the password they just used is different from the last one we stored,
+          // it means they reset it. We must clear the old reporting password for security.
+          await AsyncStorage.removeItem('reportingPassword');
+          Alert.alert(
+            "Security Update",
+            "Your main password has changed. You will be asked to create a new reporting password when you visit the Profit & Loss screen."
+          );
+        }
+        
+        // Always save the latest successful password to be used by the P&L screen check.
         await AsyncStorage.setItem('ownerPassword', password);
+        
         Alert.alert('Welcome Back!', `Successfully logged in.`);
         router.replace('/');
       }

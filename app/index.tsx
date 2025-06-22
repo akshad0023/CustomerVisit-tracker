@@ -1,6 +1,8 @@
 // app/index.tsx
 
 import { Ionicons } from '@expo/vector-icons';
+// FIX: Import AsyncStorage to check for an active shift
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import dayjs from 'dayjs';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -28,13 +30,8 @@ import { auth, db } from '../firebaseConfig';
 const uriToBlob = (uri: string): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.onload = function () {
-      resolve(xhr.response);
-    };
-    xhr.onerror = function (e) {
-      console.log(e);
-      reject(new Error('uriToBlob failed'));
-    };
+    xhr.onload = function () { resolve(xhr.response); };
+    xhr.onerror = function (e) { reject(new Error('uriToBlob failed')); };
     xhr.responseType = 'blob';
     xhr.open('GET', uri, true);
     xhr.send(null);
@@ -64,6 +61,7 @@ export default function Login() {
   const router = useRouter();
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [formMode, setFormMode] = useState<'new' | 'existing' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
@@ -71,7 +69,6 @@ export default function Login() {
   const [message, setMessage] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
   const [matchAmount, setMatchAmount] = useState('');
-  const [customerTypeIndex, setCustomerTypeIndex] = useState<number | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null);
   const [nameSearchResults, setNameSearchResults] = useState<Customer[]>([]);
@@ -99,9 +96,9 @@ export default function Login() {
 
   const resetForm = () => {
     clearCustomerInputs();
-    setCustomerTypeIndex(null);
+    setFormMode(null);
   };
-
+  
   const handleCaptureId = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
     if (permissionResult.granted === false) {
@@ -114,7 +111,7 @@ export default function Login() {
     });
     if (!result.canceled) {
       setIdImage(result.assets[0].uri);
-      Alert.alert('Success', 'ID Photo Captured!');
+      Alert.alert('Success', 'Photo Captured!');
     }
   };
 
@@ -178,42 +175,32 @@ export default function Login() {
     setPhone(customer.phone);
     setSearchModalVisible(false);
   };
-
+  
   const checkCredits = async () => {
-    const isNew = customerTypeIndex === 0;
+    const isNew = formMode === 'new';
     const cPhone = isNew ? phone.trim() : foundCustomer?.phone;
-    if (customerTypeIndex === null) {
-      Alert.alert('Selection Required', 'Please select a customer type.');
+
+    const user = auth.currentUser;
+    if (!user) { Alert.alert('Auth Error', 'Not logged in.'); return; }
+    const ongoingShiftKey = `ongoingShift_${user.uid}`;
+    const ongoingShift = await AsyncStorage.getItem(ongoingShiftKey);
+    if (!ongoingShift) {
+      Alert.alert('No Active Shift', 'Please start an employee shift before registering or checking in a customer.');
       return;
     }
-    if (!cPhone || !/^\d{10}$/.test(cPhone)) {
-      Alert.alert('Invalid Phone', 'Phone must be 10 digits.');
-      return;
+
+    if (formMode === null) { Alert.alert('Selection Required', 'Please select a customer type.'); return; }
+    if (!cPhone || !/^\d{10}$/.test(cPhone)) { Alert.alert('Invalid Phone Number', 'Phone number must be exactly 10 digits.'); return; }
+
+    if (!isNew) {
+      if (!foundCustomer) { Alert.alert("Validation Error", "Please look up and confirm an existing customer."); return; }
+      if (!matchAmount) { Alert.alert('Validation Error', 'Match amount is required for existing customers.'); return; }
     }
-    if (!matchAmount) {
-      Alert.alert('Validation Error', 'Please enter match amount.');
-      return;
-    }
-    if (!isNew && !foundCustomer) {
-      Alert.alert("Validation Error", "Please look up a customer.");
-      return;
-    }
-    if (isNew && !name) {
-      Alert.alert('Validation Error', 'Please enter a name.');
-      return;
-    }
-    if (isNew && !idImage) {
-      Alert.alert('ID Required', 'Please capture an ID.');
-      return;
-    }
+
+    if (isNew && !name) { Alert.alert('Validation Error', 'Please enter a name for the new customer.'); return; }
+    
     setIsSubmitting(true);
     setMessage('Processing...');
-    const user = auth.currentUser;
-    if (!user) {
-      Alert.alert('Auth Error', 'Not logged in.');
-      setIsSubmitting(false);
-      return;
-    }
     const ownerId = user.uid;
     const today = dayjs().format('YYYY-MM-DD');
     const cName = isNew ? name.trim() : foundCustomer!.name;
@@ -227,6 +214,7 @@ export default function Login() {
         setIsSubmitting(false);
         return;
       }
+      
       let url = data?.idImageUrl || '';
       if (isNew && idImage) {
         const fName = `${cPhone}_${Date.now()}.jpg`;
@@ -237,59 +225,36 @@ export default function Login() {
           const iRef = ref(store, fPath);
           await uploadBytes(iRef, blob);
           url = await getDownloadURL(iRef);
-        } catch (e) {
-          Alert.alert('Upload Error', 'Could not upload ID.');
-          setIsSubmitting(false);
-          return;
-        }
+        } catch (e) { Alert.alert('Upload Error', 'Could not upload ID.'); setIsSubmitting(false); return; }
       }
-      await setDoc(vRef, { lastUsed: today, name: cName, phone: cPhone, idImageUrl: url, matchAmount: Number(matchAmount), timestamp: Timestamp.now(), });
+      
+      const matchAmtNumber = Number(matchAmount) || 0;
+      await setDoc(vRef, { lastUsed: today, name: cName, phone: cPhone, idImageUrl: url, matchAmount: matchAmtNumber, timestamp: Timestamp.now() });
+      
       if (isNew) {
         const cRef = doc(db, `owners/${ownerId}/customers`, cPhone);
         await setDoc(cRef, { name: cName, phone: cPhone, idImageUrl: url, createdAt: Timestamp.now() });
-        setMessage(`✅ New customer registered. Matched: $${matchAmount}`);
+        setMessage(`✅ New customer registered. Matched: $${matchAmtNumber}`);
       } else {
-        setMessage(`✅ Visit updated for ${cName}. Matched: $${matchAmount}`);
+        setMessage(`✅ Visit updated for ${cName}. Matched: $${matchAmtNumber}`);
       }
-      setTimeout(() => {
-        clearCustomerInputs();
-      }, 2000);
+      
+      setTimeout(() => { clearCustomerInputs(); }, 2000);
     } catch (e) {
       Alert.alert('Error', 'An unknown error occurred.');
     } finally {
       setIsSubmitting(false);
     }
   };
-
+  
   const handleLogout = () => {
-    Alert.alert("Confirm Logout", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Log Out", style: "destructive", onPress: async () => { await auth.signOut(); } }
-    ]);
+    Alert.alert( "Confirm Logout", "Are you sure you want to log out?", [ { text: "Cancel", style: "cancel" }, { text: "Log Out", style: "destructive", onPress: async () => { await auth.signOut(); } } ] );
   };
 
   const handleChangeEmail = () => {
     const user = auth.currentUser;
     if (!user) return;
-    Alert.prompt("Change Email Address", "Enter your new email address. You will be logged out and asked to verify the new address.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Confirm & Change", onPress: async (newEmail) => {
-          if (newEmail && newEmail.includes('@')) {
-            try {
-              await updateEmail(user, newEmail.trim());
-              await sendEmailVerification(user);
-              Alert.alert("Success! Please Verify.", `Your login email has been changed to ${newEmail}. A verification link has been sent. You will now be logged out.`);
-              auth.signOut();
-            } catch (error: any) {
-              Alert.alert("Error", "Could not change email. This is a sensitive operation and may require you to log out and log back in before trying again.");
-            }
-          } else {
-            Alert.alert("Invalid Email", "Please enter a valid new email address.");
-          }
-        }
-      }
-    ], 'plain-text', '', 'email-address');
+    Alert.prompt( "Change Email Address", "Enter your new email address. You will be logged out and asked to verify the new address.", [ { text: "Cancel", style: "cancel" }, { text: "Confirm & Change", onPress: async (newEmail) => { if (newEmail && newEmail.includes('@')) { try { await updateEmail(user, newEmail.trim()); await sendEmailVerification(user); Alert.alert( "Success!", `Verification link sent to ${newEmail}. You will be logged out.` ); auth.signOut(); } catch (e) { Alert.alert("Error", "Could not change email."); } } else { Alert.alert("Invalid Email", "Please enter a valid new email address."); } } } ], 'plain-text', '', 'email-address' );
   };
 
   if (loading) {
@@ -308,6 +273,7 @@ export default function Login() {
       <TouchableOpacity style={styles.resetButton} onPress={resetForm}>
         <Ionicons name="refresh-circle-outline" size={32} color="#555" />
       </TouchableOpacity>
+      
       <Modal visible={menuVisible} transparent animationType="fade">
         <Pressable style={styles.modalBackground} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuContainer}>
@@ -368,16 +334,16 @@ export default function Login() {
 
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
-          {customerTypeIndex === null ? (
+          {formMode === null ? (
             <>
               <Text style={styles.header}>Register Member</Text>
               <Text style={styles.subtitle}>How would you like to proceed?</Text>
-              <TouchableOpacity style={styles.choiceCard} onPress={() => setCustomerTypeIndex(0)}>
+              <TouchableOpacity style={styles.choiceCard} onPress={() => setFormMode('new')}>
                 <Ionicons name="person-add-outline" size={32} color="#007bff" />
                 <Text style={styles.choiceTitle}>New Customer</Text>
                 <Text style={styles.choiceDescription}>Register a brand new customer.</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.choiceCard} onPress={() => setCustomerTypeIndex(1)}>
+              <TouchableOpacity style={styles.choiceCard} onPress={() => setFormMode('existing')}>
                 <Ionicons name="people-outline" size={32} color="#007bff" />
                 <Text style={styles.choiceTitle}>Existing Customer</Text>
                 <Text style={styles.choiceDescription}>Look up and record a visit.</Text>
@@ -386,26 +352,26 @@ export default function Login() {
           ) : (
             <View style={styles.formContainer}>
               <View style={styles.formHeader}>
-                <TouchableOpacity onPress={() => setCustomerTypeIndex(null)} style={styles.backButton}>
+                <TouchableOpacity onPress={() => setFormMode(null)} style={styles.backButton}>
                   <Ionicons name="arrow-back" size={24} color="#555" />
                 </TouchableOpacity>
-                <Text style={styles.header}>{customerTypeIndex === 0 ? 'Register New' : 'Find Existing'}</Text>
+                <Text style={styles.header}>{formMode === 'new' ? 'Register New' : 'Find Existing'}</Text>
                 <View style={{ width: 24 }} />
               </View>
 
-              {customerTypeIndex === 0 && (
+              {formMode === 'new' && (
                 <>
-                  <IconTextInput iconName="person-outline" placeholder="Customer Name" value={name} onChangeText={setName} />
-                  <IconTextInput iconName="call-outline" placeholder="10-Digit Phone Number" keyboardType="number-pad" value={phone} onChangeText={setPhone} maxLength={10} />
-                  <IconTextInput iconName="cash-outline" placeholder="Match Amount" keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} />
+                  <IconTextInput iconName="person-outline" placeholder="Customer Name (Required)" value={name} onChangeText={setName} />
+                  <IconTextInput iconName="call-outline" placeholder="10-Digit Phone (Required)" keyboardType="number-pad" value={phone} onChangeText={setPhone} maxLength={10} />
+                  <IconTextInput iconName="cash-outline" placeholder="Match Amount (Optional)" keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} />
                   <TouchableOpacity style={[styles.button, styles.captureButton]} onPress={handleCaptureId}>
                     <Ionicons name={idImage ? "camera" : "camera-outline"} size={20} color="#007bff" />
-                    <Text style={styles.captureButtonText}>{idImage ? 'ID Captured!' : 'Capture ID Photo'}</Text>
+                    <Text style={styles.captureButtonText}>{idImage ? 'Photo Captured!' : 'Capture Photo (Optional)'}</Text>
                   </TouchableOpacity>
                 </>
               )}
 
-              {customerTypeIndex === 1 && (
+              {formMode === 'existing' && (
                 <>
                   {foundCustomer ? (
                     <View style={styles.foundCustomerBox}>
@@ -425,7 +391,7 @@ export default function Login() {
                       <IconTextInput iconName="call-outline" placeholder="Search by 10-Digit Phone" keyboardType="number-pad" value={phone} onChangeText={setPhone} onBlur={() => handleLookup('phone')} maxLength={10} />
                     </>
                   )}
-                  <IconTextInput iconName="cash-outline" placeholder="Match Amount" keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} />
+                  <IconTextInput iconName="cash-outline" placeholder="Match Amount (Required)" keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} />
                 </>
               )}
               <TouchableOpacity style={[styles.button, styles.submitButton]} onPress={checkCredits} disabled={isSubmitting}>
@@ -439,7 +405,6 @@ export default function Login() {
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f2f5' },
@@ -455,7 +420,7 @@ const styles = StyleSheet.create({
   backButton: { padding: 5, },
   formContainer: { width: '100%' },
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, marginBottom: 16, paddingHorizontal: 12 },
-  inputIcon: { marginRight: 10 },
+  inputIcon: { marginRight: 10, },
   input: { flex: 1, height: 55, fontSize: 16, color: '#333' },
   orText: { textAlign: 'center', color: '#aaa', marginVertical: -8, marginBottom: 8, fontWeight: '600' },
   button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 15, marginTop: 10 },

@@ -2,12 +2,10 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-// NEW: Import the auth functions
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-// NEW: Import the auth instance
 import { auth, db } from '../firebaseConfig';
 
 interface Shift {
@@ -20,6 +18,7 @@ interface Shift {
   totalOut: number;
   totalMatchedAmount: number;
   profitOrLoss: number;
+  notes?: string; // Notes are optional
 }
 
 interface SummaryRowProps {
@@ -43,14 +42,13 @@ const SummaryRow: React.FC<SummaryRowProps> = ({ label, value, valueColor = '#33
 export default function MachineTracker() {
   const [shiftData, setShiftData] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isReady, setIsReady] = useState(false); // The new security gate state
+  const [isReady, setIsReady] = useState(false);
   const router = useRouter();
 
-  // EFFECT 1: Security Gate
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setIsReady(true); // It's safe to fetch data now
+        setIsReady(true);
       } else {
         router.replace('/owner');
       }
@@ -58,9 +56,8 @@ export default function MachineTracker() {
     return () => unsubscribe();
   }, [router]);
 
-  // EFFECT 2: Data Fetcher
   useEffect(() => {
-    if (!isReady) return; // Don't run if the user isn't authenticated yet
+    if (!isReady) return;
 
     const fetchShiftData = async () => {
       setLoading(true);
@@ -81,7 +78,7 @@ export default function MachineTracker() {
       }
     };
     fetchShiftData();
-  }, [isReady]); // This effect depends on the security gate
+  }, [isReady]);
 
   if (!isReady || loading) {
     return (
@@ -106,6 +103,18 @@ export default function MachineTracker() {
             <Text style={styles.timeText}>End: {item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}</Text>
           </View>
         </View>
+
+        {/* Display notes if they exist */}
+        {item.notes && item.notes.trim() !== '' && (
+          <>
+            <View style={styles.divider} />
+            <View style={styles.notesSection}>
+              <Text style={styles.notesTitle}>📝 Shift Notes:</Text>
+              <Text style={styles.notesText}>{item.notes}</Text>
+            </View>
+          </>
+        )}
+
         <View style={styles.divider} />
         {item.machines && Object.keys(item.machines).length > 0 && (
           <View style={styles.machineSection}>
@@ -170,6 +179,9 @@ const styles = StyleSheet.create({
   employeeName: { fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: '#111', },
   timeText: { fontSize: 14, color: '#666', },
   divider: { height: 1, backgroundColor: '#e9ecef', marginVertical: 12, },
+  notesSection: { backgroundColor: '#f8f9fa', padding: 10, borderRadius: 8, },
+  notesTitle: { fontSize: 14, fontWeight: '600', color: '#495057', marginBottom: 5, },
+  notesText: { fontSize: 14, color: '#343a40', fontStyle: 'italic', },
   machineSection: { marginVertical: 5, },
   machineTableHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#dee2e6', },
   tableHeaderText: { fontSize: 14, fontWeight: '600', color: '#495057', },

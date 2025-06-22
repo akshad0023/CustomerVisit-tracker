@@ -2,7 +2,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-// NEW: Import onAuthStateChanged
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDocs, setDoc, Timestamp } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -17,7 +16,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-// NEW: Import the auth instance
 import { auth, db } from '../firebaseConfig';
 
 interface IconTextInputProps extends TextInputProps {
@@ -40,14 +38,18 @@ export default function EmployeeShift() {
   const [startTime, setStartTime] = useState<string | null>(null); 
   const [newMachine, setNewMachine] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // NEW: Add a state for the security gate
   const [isReady, setIsReady] = useState(false);
+  const [shiftNotes, setShiftNotes] = useState('');
 
-  // EFFECT 1: Security Gate - Runs first to check for an authenticated user
+  const getStorageKey = () => {
+    const user = auth.currentUser;
+    return user ? `ongoingShift_${user.uid}` : null;
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setIsReady(true); // Open the gate, it's safe to proceed
+        setIsReady(true);
       } else {
         router.replace('/owner');
       }
@@ -55,12 +57,13 @@ export default function EmployeeShift() {
     return () => unsubscribe();
   }, [router]);
   
-  // EFFECT 2: Restore Shift State - Only runs AFTER the security gate is open
   useEffect(() => {
-    if (!isReady) return; // Don't run until the auth check is complete
-
+    if (!isReady) return;
     const restoreShiftState = async () => {
-      const savedShift = await AsyncStorage.getItem('ongoingShift');
+      const storageKey = getStorageKey();
+      if (!storageKey) return;
+
+      const savedShift = await AsyncStorage.getItem(storageKey);
       if (savedShift) {
         const parsed = JSON.parse(savedShift);
         setEmployeeName(parsed.employeeName);
@@ -69,10 +72,11 @@ export default function EmployeeShift() {
         setIsShiftStarted(true);
         setIsShiftEnding(parsed.isShiftEnding || false);
         setMachineData(parsed.machineData || {});
+        setShiftNotes(parsed.shiftNotes || '');
       }
     };
     restoreShiftState();
-  }, [isReady]); // Dependency on isReady is crucial
+  }, [isReady]);
 
   const addMachine = () => {
     if (!newMachine.trim()) return;
@@ -98,10 +102,12 @@ export default function EmployeeShift() {
           text: "Delete",
           style: "destructive",
           onPress: () => {
+            const storageKey = getStorageKey();
+            if (!storageKey) return;
             setMachineData((prev) => {
               const updatedData = { ...prev };
               delete updatedData[machineToDelete];
-              AsyncStorage.mergeItem('ongoingShift', JSON.stringify({ machineData: updatedData }));
+              AsyncStorage.mergeItem(storageKey, JSON.stringify({ machineData: updatedData }));
               return updatedData;
             });
           },
@@ -115,39 +121,84 @@ export default function EmployeeShift() {
       Alert.alert('Please enter employee name');
       return;
     }
+    const storageKey = getStorageKey();
+    if (!storageKey) {
+        Alert.alert("Error", "Could not start shift. User not identified.");
+        return;
+    }
+
     const newShiftId = `${employeeName.trim().replace(/\s+/g, '_')}_${Date.now()}`;
     const newStartTime = new Date();
     setShiftId(newShiftId);
     setStartTime(newStartTime.toISOString());
     setIsShiftStarted(true);
-    await AsyncStorage.setItem('ongoingShift', JSON.stringify({
+    await AsyncStorage.setItem(storageKey, JSON.stringify({
       employeeName,
       shiftId: newShiftId,
       startTime: newStartTime.toISOString(),
       isShiftEnding: false,
-      machineData: {}
+      machineData: {},
+      shiftNotes: ''
     }));
     Alert.alert('Shift Started', `Shift for ${employeeName} has begun.`);
   };
 
   const handleEndShift = async () => {
     setIsShiftEnding(true);
-    const current = await AsyncStorage.getItem('ongoingShift');
+    const storageKey = getStorageKey();
+    if (!storageKey) return;
+    const current = await AsyncStorage.getItem(storageKey);
     if (current) {
       const parsed = JSON.parse(current);
       parsed.isShiftEnding = true;
-      await AsyncStorage.setItem('ongoingShift', JSON.stringify(parsed));
+      await AsyncStorage.setItem(storageKey, JSON.stringify(parsed));
     }
   };
 
+  const handleNotesInput = (text: string) => {
+    setShiftNotes(text);
+    const storageKey = getStorageKey();
+    if (!storageKey) return;
+    AsyncStorage.mergeItem(storageKey, JSON.stringify({ shiftNotes: text }));
+  };
+
   const handleMachineInput = (machine: string, type: 'in' | 'out', value: string) => {
+    const storageKey = getStorageKey();
+    if (!storageKey) return;
     setMachineData((prev) => {
       const updated = { ...prev, [machine]: { ...prev[machine], [type]: value } };
-      AsyncStorage.mergeItem('ongoingShift', JSON.stringify({ machineData: updated }));
+      AsyncStorage.mergeItem(storageKey, JSON.stringify({ machineData: updated }));
       return updated;
     });
   };
 
+  const handleDiscardShift = () => {
+    Alert.alert(
+      "Discard Shift",
+      "Are you sure you want to discard this entire shift? All entered data will be lost.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Discard",
+          style: "destructive",
+          onPress: async () => {
+            const storageKey = getStorageKey();
+            if (storageKey) {
+              await AsyncStorage.removeItem(storageKey);
+            }
+            setIsShiftStarted(false);
+            setIsShiftEnding(false);
+            setEmployeeName('');
+            setMachineData({});
+            setShiftId('');
+            setStartTime(null);
+            setShiftNotes('');
+          }
+        }
+      ]
+    );
+  };
+  
   const handleSaveShift = async () => {
     setIsSubmitting(true);
     try {
@@ -159,18 +210,12 @@ export default function EmployeeShift() {
         setIsSubmitting(false);
         return;
       }
-      
       const user = auth.currentUser;
-      if (!user) {
-        // This throw should ideally never be reached because of the security gate
-        throw new Error('Owner not logged in. Please restart the app.');
-      }
+      if (!user) { throw new Error('Owner not logged in. Please restart the app.'); }
       const ownerId = user.uid;
-
       const endTime = new Date();
       const shiftStartDate = startTime ? new Date(startTime) : null;
-      let totalIn = 0;
-      let totalOut = 0;
+      let totalIn = 0, totalOut = 0;
       const machines: { [key: string]: { in: number, out: number } } = {};
       Object.entries(machineData).forEach(([machine, { in: inAmt, out: outAmt }]) => {
         const inNum = parseFloat(inAmt) || 0;
@@ -179,24 +224,21 @@ export default function EmployeeShift() {
         totalIn += inNum;
         totalOut += outNum;
       });
-      
       const profitOrLoss = totalIn - totalOut;
       const carryForward = totalOut;
-      const visitSnapshot = await getDocs(collection(db, `owners/${ownerId}/visitHistory`));
       let totalMatchedAmount = 0;
-      
+      const visitSnapshot = await getDocs(collection(db, `owners/${ownerId}/visitHistory`));
       visitSnapshot.forEach(doc => {
         const data = doc.data();
         const visitTime = data.timestamp?.toDate ? data.timestamp.toDate() : (data.timestamp ? new Date(data.timestamp) : null);
-        const match = typeof data.matchAmount === 'number' ? data.matchAmount : 0;
         if (visitTime && shiftStartDate && visitTime >= shiftStartDate && visitTime <= endTime) {
-          totalMatchedAmount += match;
+          totalMatchedAmount += data.matchAmount || 0;
         }
       });
       
       await setDoc(doc(db, `owners/${ownerId}/shifts`, shiftId), {
         employeeName, 
-        startTime: startTime, 
+        startTime, 
         endTime: endTime.toISOString(), 
         machines, 
         totalIn, 
@@ -204,10 +246,13 @@ export default function EmployeeShift() {
         profitOrLoss, 
         carryForward, 
         totalMatchedAmount, 
+        notes: shiftNotes.trim(),
         timestamp: Timestamp.now(),
       });
       
-      await AsyncStorage.removeItem('ongoingShift');
+      const storageKey = getStorageKey();
+      if (storageKey) await AsyncStorage.removeItem(storageKey);
+      
       Alert.alert('Shift Saved!', 'The shift data has been successfully recorded.');
       setIsShiftStarted(false);
       setIsShiftEnding(false);
@@ -215,6 +260,7 @@ export default function EmployeeShift() {
       setMachineData({});
       setShiftId('');
       setStartTime(null);
+      setShiftNotes('');
     } catch (error: any) {
       Alert.alert('Error Saving Shift', error.message);
     } finally {
@@ -222,7 +268,6 @@ export default function EmployeeShift() {
     }
   };
 
-  // Show a loading screen until the auth check is complete
   if (!isReady) {
     return (
         <View style={styles.centered}>
@@ -244,12 +289,7 @@ export default function EmployeeShift() {
         {!isShiftStarted ? (
           <>
             <Text style={styles.cardTitle}>Start New Shift</Text>
-            <IconTextInput
-              iconName="person-circle-outline"
-              placeholder="Enter Employee Name"
-              value={employeeName}
-              onChangeText={setEmployeeName}
-            />
+            <IconTextInput iconName="person-circle-outline" placeholder="Enter Employee Name" value={employeeName} onChangeText={setEmployeeName} />
             <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={handleStartShift}>
               <Ionicons name="play-circle-outline" size={24} color="#fff" />
               <Text style={styles.buttonText}>Start Shift</Text>
@@ -269,26 +309,21 @@ export default function EmployeeShift() {
               <Ionicons name="stop-circle-outline" size={24} color="#fff" />
               <Text style={styles.buttonText}>End & Finalize Shift</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={handleDiscardShift}>
+              <Ionicons name="trash-bin-outline" size={20} color="#fff" />
+              <Text style={styles.buttonText}>Discard Shift</Text>
+            </TouchableOpacity>
           </>
         ) : (
           <>
             <Text style={styles.cardTitle}>Finalize Shift for {employeeName}</Text>
             <Text style={styles.subHeader}>Enter Machine Data</Text>
-            
             <View style={styles.addMachineRow}>
-              <IconTextInput
-                iconName="add-circle-outline"
-                placeholder="Machine #"
-                value={newMachine}
-                onChangeText={setNewMachine}
-                onSubmitEditing={addMachine}
-                keyboardType="number-pad"
-              />
+              <IconTextInput iconName="add-circle-outline" placeholder="Machine #" value={newMachine} onChangeText={setNewMachine} onSubmitEditing={addMachine} keyboardType="number-pad" />
               <TouchableOpacity onPress={addMachine} style={styles.addButton}>
                 <Text style={styles.addButtonText}>Add</Text>
               </TouchableOpacity>
             </View>
-
             {Object.keys(machineData).length > 0 && (
               <View style={styles.machineTable}>
                 <View style={styles.machineTableHeader}>
@@ -310,6 +345,17 @@ export default function EmployeeShift() {
               </View>
             )}
             
+            <View style={styles.notesContainer}>
+              <Text style={styles.subHeader}>Shift Notes (Optional)</Text>
+              <TextInput
+                style={styles.notesInput}
+                placeholder="e.g., Machine 5 was reset at 3 PM..."
+                multiline
+                value={shiftNotes}
+                onChangeText={handleNotesInput}
+              />
+            </View>
+
             <TouchableOpacity style={[styles.button, styles.successButton]} onPress={handleSaveShift} disabled={isSubmitting}>
               {isSubmitting ? <ActivityIndicator color="#fff"/> :
                 <>
@@ -318,6 +364,10 @@ export default function EmployeeShift() {
                 </>
               }
             </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={handleDiscardShift}>
+              <Ionicons name="close-circle-outline" size={22} color="#fff" />
+              <Text style={styles.buttonText}>Cancel & Discard</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>
@@ -325,7 +375,6 @@ export default function EmployeeShift() {
   );
 }
 
-// Styles remain the same
 const styles = StyleSheet.create({
   container: { padding: 10, backgroundColor: '#f0f2f5', flexGrow: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -341,6 +390,7 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: '#007bff' },
   warningButton: { backgroundColor: '#ffc107' },
   successButton: { backgroundColor: '#28a745' },
+  dangerButton: { backgroundColor: '#dc3545', },
   activeShiftInfo: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff3cd', padding: 20, borderRadius: 12, marginBottom: 20 },
   activeShiftText: { fontSize: 16, color: '#856404' },
   subHeader: { fontSize: 18, fontWeight: '600', color: '#495057', marginBottom: 15 },
@@ -356,4 +406,6 @@ const styles = StyleSheet.create({
   machineInput: { backgroundColor: '#fff', textAlign: 'center', borderLeftWidth: 1, borderLeftColor: '#e9ecef' },
   deleteButton: { padding: 12, borderLeftWidth: 1, borderLeftColor: '#e9ecef', },
   deleteButtonHeader: { padding: 12, width: 46, },
+  notesContainer: { marginVertical: 20, },
+  notesInput: { backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, padding: 12, fontSize: 16, textAlignVertical: 'top', height: 100, },
 });
