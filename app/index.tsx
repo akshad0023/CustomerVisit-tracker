@@ -40,10 +40,11 @@ const uriToBlob = (uri: string): Promise<Blob> => {
 
 interface IconTextInputProps extends TextInputProps {
   iconName: keyof typeof Ionicons.glyphMap;
+  containerStyle?: object;
 }
-const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => {
+const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, containerStyle, ...props }) => {
   return (
-    <View style={styles.inputContainer}>
+    <View style={[styles.inputContainer, containerStyle]}>
       <Ionicons name={iconName} size={22} color="#888" style={styles.inputIcon} />
       <TextInput style={styles.input} {...props} placeholderTextColor="#aaa" />
     </View>
@@ -69,46 +70,47 @@ export default function Login() {
   const [message, setMessage] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
   const [matchAmount, setMatchAmount] = useState('');
+  const [machineNumber, setMachineNumber] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null);
   const [nameSearchResults, setNameSearchResults] = useState<Customer[]>([]);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [ownerData, setOwnerData] = useState<{ hasSmsFeature?: boolean } | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) { setLoading(false); } else { router.replace('/owner'); }
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const ownerRef = doc(db, 'owners', user.uid);
+          const docSnap = await getDoc(ownerRef);
+          if (docSnap.exists()) { setOwnerData(docSnap.data()); }
+        } catch (error) { console.error("Could not fetch owner data:", error); }
+        finally { setLoading(false); }
+      } else {
+        router.replace('/owner');
+      }
     });
     return () => unsubscribe();
   }, [router]);
 
   const clearCustomerInputs = () => {
-    setPhone('');
-    setName('');
-    setIdImage(null);
-    setMatchAmount('');
-    setMessage('');
-    setFoundCustomer(null);
+    setPhone(''); setName(''); setIdImage(null); setMatchAmount(''); setMessage(''); setFoundCustomer(null); setMachineNumber('');
   };
-
   const resetForm = () => {
-    clearCustomerInputs();
-    setFormMode(null);
+    clearCustomerInputs(); setFormMode(null);
   };
 
   const handleCaptureId = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (permissionResult.granted === false) { Alert.alert('Camera access is required!'); return; }
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.5 });
-    if (!result.canceled) {
-      setIdImage(result.assets[0].uri);
-      Alert.alert('Success', 'Photo Captured!');
-    }
+    const p = await ImagePicker.requestCameraPermissionsAsync();
+    if (!p.granted) { Alert.alert('Camera access is required!'); return; }
+    const r = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.5 });
+    if (!r.canceled) { setIdImage(r.assets[0].uri); Alert.alert('Success', 'Photo Captured!'); }
   };
 
   const handleLookup = async (lookupField: 'name' | 'phone') => {
     if (isSearching) return;
-    const lookupValue = lookupField === 'name' ? name.trim() : phone.trim();
-    if (!lookupValue) return;
+    const v = lookupField === 'name' ? name.trim() : phone.trim();
+    if (!v) return;
     setIsSearching(true);
     setFoundCustomer(null);
     const user = auth.currentUser;
@@ -116,31 +118,22 @@ export default function Login() {
     const ref = collection(db, 'owners', user.uid, 'customers');
     try {
       if (lookupField === 'phone') {
-        if (!/^\d{10}$/.test(lookupValue)) { Alert.alert('Invalid Phone', 'Phone number must be 10 digits.'); setIsSearching(false); return; }
-        const dRef = doc(ref, lookupValue);
+        if (!/^\d{10}$/.test(v)) { Alert.alert('Invalid Phone', 'Phone must be 10 digits.'); setIsSearching(false); return; }
+        const dRef = doc(ref, v);
         const dSnap = await getDoc(dRef);
         if (dSnap.exists()) {
           const cData = { id: dSnap.id, ...dSnap.data() } as Customer;
-          setFoundCustomer(cData);
-          setName(cData.name);
-          setPhone(cData.phone);
+          setFoundCustomer(cData); setName(cData.name); setPhone(cData.phone);
         } else {
-          Alert.alert("Not Found", "No customer with this phone number.");
-          setName('');
+          Alert.alert("Not Found", "No customer with this phone number."); setName('');
         }
       } else {
-        const q = query(ref, where('name', '==', lookupValue));
+        const q = query(ref, where('name', '==', v));
         const qSnap = await getDocs(q);
         const res = qSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Customer[];
-        if (res.length === 0) { Alert.alert("Not Found", "No customers with this name."); } else if (res.length === 1) {
-          const cData = res[0];
-          setFoundCustomer(cData);
-          setName(cData.name);
-          setPhone(cData.phone);
-        } else {
-          setNameSearchResults(res);
-          setSearchModalVisible(true);
-        }
+        if (res.length === 0) { Alert.alert("Not Found", "No customers with this name."); }
+        else if (res.length === 1) { const cData = res[0]; setFoundCustomer(cData); setName(cData.name); setPhone(cData.phone); }
+        else { setNameSearchResults(res); setSearchModalVisible(true); }
       }
     } catch (e) {
       Alert.alert("Error", "Customer lookup failed.");
@@ -150,16 +143,12 @@ export default function Login() {
   };
 
   const handleSelectCustomer = (customer: Customer) => {
-    setFoundCustomer(customer);
-    setName(customer.name);
-    setPhone(customer.phone);
-    setSearchModalVisible(false);
+    setFoundCustomer(customer); setName(customer.name); setPhone(customer.phone); setSearchModalVisible(false);
   };
 
   const checkCredits = async () => {
     const isNew = formMode === 'new';
     const cPhone = isNew ? phone.trim() : foundCustomer?.phone;
-
     const user = auth.currentUser;
     if (!user) { Alert.alert('Auth Error', 'Not logged in.'); return; }
     const ongoingShiftKey = `ongoingShift_${user.uid}`;
@@ -172,7 +161,13 @@ export default function Login() {
       if (!matchAmount) { Alert.alert('Validation Error', 'Match amount is required for existing customers.'); return; }
     }
     if (isNew && !name) { Alert.alert('Validation Error', 'Please enter a name for the new customer.'); return; }
-    
+
+    const matchAmtNumber = Number(matchAmount) || 0;
+    if (matchAmtNumber > 0 && !machineNumber.trim()) {
+      Alert.alert('Machine Number Required', 'Please enter the machine number for the matched amount.');
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage('Processing...');
     const ownerId = user.uid;
@@ -183,12 +178,18 @@ export default function Login() {
       const dSnap = await getDoc(vRef);
       const exists = dSnap.exists();
       const data = exists ? dSnap.data() : null;
-      if (exists && data?.lastUsed === today) {
-        setMessage(`❌ Match already used today for ${cName}: $${data.matchAmount}`);
-        setIsSubmitting(false);
-        return;
+      // 12-hour reset logic
+      if (exists && data?.timestamp?.toDate) {
+        const lastVisit = data.timestamp.toDate();
+        const now = new Date();
+        const hoursSince = (now.getTime() - lastVisit.getTime()) / (1000 * 60 * 60);
+        if (hoursSince < 12) {
+          setMessage(`❌ Match already used in the last ${Math.floor(hoursSince)} hrs for ${cName}: $${data.matchAmount}`);
+          setIsSubmitting(false);
+          return;
+        }
       }
-      
+
       let url = data?.idImageUrl || '';
       if (isNew && idImage) {
         const fName = `${cPhone}_${Date.now()}.jpg`;
@@ -201,10 +202,9 @@ export default function Login() {
           url = await getDownloadURL(iRef);
         } catch (e) { Alert.alert('Upload Error', 'Could not upload ID.'); setIsSubmitting(false); return; }
       }
-      
-      const matchAmtNumber = Number(matchAmount) || 0;
-      await setDoc(vRef, { lastUsed: today, name: cName, phone: cPhone, idImageUrl: url, matchAmount: matchAmtNumber, timestamp: Timestamp.now() });
-      
+
+      await setDoc(vRef, { lastUsed: today, name: cName, phone: cPhone, idImageUrl: url, matchAmount: matchAmtNumber, machineNumber: machineNumber.trim(), timestamp: Timestamp.now() });
+
       if (isNew) {
         const cRef = doc(db, `owners/${ownerId}/customers`, cPhone);
         await setDoc(cRef, { name: cName, phone: cPhone, idImageUrl: url, createdAt: Timestamp.now() });
@@ -212,7 +212,7 @@ export default function Login() {
       } else {
         setMessage(`✅ Visit updated for ${cName}. Matched: $${matchAmtNumber}`);
       }
-      
+
       setTimeout(() => { clearCustomerInputs(); }, 2000);
     } catch (e) {
       Alert.alert('Error', 'An unknown error occurred.');
@@ -234,13 +234,14 @@ export default function Login() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Moved buttons outside ScrollView to ensure tapability, and added higher zIndex */}
       <TouchableOpacity style={styles.menuButton} onPress={() => setMenuVisible(true)}>
         <Ionicons name="menu" size={32} color="#333" />
       </TouchableOpacity>
       <TouchableOpacity style={styles.resetButton} onPress={resetForm}>
         <Ionicons name="refresh-circle-outline" size={32} color="#555" />
       </TouchableOpacity>
-      
+
       <Modal visible={menuVisible} transparent animationType="fade">
         <Pressable style={styles.modalBackground} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuContainer}>
@@ -260,6 +261,12 @@ export default function Login() {
               <Ionicons name="analytics-outline" size={22} color="#444" style={styles.menuIcon} />
               <Text style={styles.menuItemText}>Machine Tracker</Text>
             </TouchableOpacity>
+            {ownerData?.hasSmsFeature === true && (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/bulksms'); }}>
+                <Ionicons name="send-outline" size={22} color="#444" style={styles.menuIcon} />
+                <Text style={styles.menuItemText}>Send Bulk Message</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/profitloss'); }}>
               <Ionicons name="wallet-outline" size={22} color="#444" style={styles.menuIcon} />
               <Text style={styles.menuItemText}>Profit & Loss</Text>
@@ -295,7 +302,12 @@ export default function Login() {
         </View>
       </Modal>
 
+      {/* Added paddingTop to scrollContainer to prevent overlap with absolute buttons */}
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+        <View style={styles.logoContainer}>
+            <Text style={styles.logoText}>CMT</Text>
+        </View>
+
         <View style={styles.card}>
           {formMode === null ? (
             <>
@@ -315,7 +327,7 @@ export default function Login() {
           ) : (
             <View style={styles.formContainer}>
               <View style={styles.formHeader}>
-                <TouchableOpacity onPress={() => setFormMode(null)} style={styles.backButton}>
+                <TouchableOpacity onPress={() => { setFormMode(null); clearCustomerInputs(); }} style={styles.backButton}>
                   <Ionicons name="arrow-back" size={24} color="#555" />
                 </TouchableOpacity>
                 <Text style={styles.header}>{formMode === 'new' ? 'Register New' : 'Find Existing'}</Text>
@@ -326,11 +338,6 @@ export default function Login() {
                 <>
                   <IconTextInput iconName="person-outline" placeholder="Customer Name (Required)" value={name} onChangeText={setName} />
                   <IconTextInput iconName="call-outline" placeholder="10-Digit Phone (Required)" keyboardType="number-pad" value={phone} onChangeText={setPhone} maxLength={10} />
-                  <IconTextInput iconName="cash-outline" placeholder="Match Amount (Optional)" keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} />
-                  <TouchableOpacity style={[styles.button, styles.captureButton]} onPress={handleCaptureId}>
-                    <Ionicons name={idImage ? "camera" : "camera-outline"} size={20} color="#007bff" />
-                    <Text style={styles.captureButtonText}>{idImage ? 'Photo Captured!' : 'Capture Photo (Optional)'}</Text>
-                  </TouchableOpacity>
                 </>
               )}
 
@@ -354,9 +361,21 @@ export default function Login() {
                       <IconTextInput iconName="call-outline" placeholder="Search by 10-Digit Phone" keyboardType="number-pad" value={phone} onChangeText={setPhone} onBlur={() => handleLookup('phone')} maxLength={10} />
                     </>
                   )}
-                  <IconTextInput iconName="cash-outline" placeholder="Match Amount (Required)" keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} />
                 </>
               )}
+
+              <View style={styles.amountRow}>
+                <IconTextInput iconName="cash-outline" placeholder={formMode === 'new' ? "Match Amt (Optional)" : "Match Amt (Required)"} keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} containerStyle={{flex: 2}}/>
+                <IconTextInput iconName="game-controller-outline" placeholder="Machine #" keyboardType="number-pad" value={machineNumber} onChangeText={setMachineNumber} containerStyle={{flex: 1, marginLeft: 10}}/>
+              </View>
+
+              {formMode === 'new' && (
+                <TouchableOpacity style={[styles.button, styles.captureButton]} onPress={handleCaptureId}>
+                  <Ionicons name={idImage ? "camera" : "camera-outline"} size={20} color="#007bff" />
+                  <Text style={styles.captureButtonText}>{idImage ? 'Photo Captured!' : 'Capture Photo (Optional)'}</Text>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity style={[styles.button, styles.submitButton]} onPress={checkCredits} disabled={isSubmitting}>
                 {isSubmitting ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark-circle-outline" size={22} color="#fff" /><Text style={styles.submitButtonText}>Check & Save Visit</Text></>}
               </TouchableOpacity>
@@ -372,7 +391,41 @@ export default function Login() {
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f2f5' },
   container: { flex: 1, backgroundColor: '#f0f2f5' },
-  scrollContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 15 },
+  // Adjusted scrollContainer with paddingTop to account for absolute buttons
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60, // Space for the absolutely positioned buttons
+    paddingHorizontal: 15, // Keep existing horizontal padding
+  },
+  logoContainer: {
+    alignSelf: 'center',
+    backgroundColor: '#007bff',
+    width: 230,
+    height: 50,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
+  logoText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+    letterSpacing: 2,
+  },
+  appName: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 18,
+    fontWeight: '500',
+  },
   card: { width: '100%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 },
   header: { fontSize: 26, fontWeight: 'bold', textAlign: 'center', marginBottom: 8, color: '#1c1c1e' },
   subtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 24, },
@@ -386,14 +439,34 @@ const styles = StyleSheet.create({
   inputIcon: { marginRight: 10, },
   input: { flex: 1, height: 55, fontSize: 16, color: '#333' },
   orText: { textAlign: 'center', color: '#aaa', marginVertical: -8, marginBottom: 8, fontWeight: '600' },
+  amountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 15, marginTop: 10 },
-  captureButton: { backgroundColor: '#eaf4ff', borderWidth: 1, borderColor: '#007bff' },
+  captureButton: { backgroundColor: '#eaf4ff', borderWidth: 1, borderColor: '#007bff', },
   captureButtonText: { color: '#007bff', fontSize: 16, fontWeight: '600', marginLeft: 8 },
   submitButton: { backgroundColor: '#28a745' },
   submitButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
   message: { marginTop: 20, fontSize: 16, textAlign: 'center', paddingHorizontal: 10, fontWeight: '500' },
-  menuButton: { position: 'absolute', top:100, left: 15, zIndex: 20, padding: 5 },
-  resetButton: { position: 'absolute', top: 100, right: 15, zIndex: 20, padding: 5 },
+  // Increased zIndex for buttons to ensure they are on top
+  menuButton: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    zIndex: 99,
+    padding: 10,
+    backgroundColor: '#fff',
+    borderRadius: 30,
+    elevation: 4,
+  },
+  resetButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 99,
+    padding: 10,
+    backgroundColor: '#fff',
+    borderRadius: 30,
+    elevation: 4,
+  },
   modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   menuContainer: { backgroundColor: '#fff', borderRadius: 10, padding: 8, position: 'absolute', top: 55, left: 15, minWidth: 240, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },

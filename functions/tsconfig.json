@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "module": "es2020",
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "outDir": "lib",
+    "sourceMap": true,
+    "strict": true,
+    "target": "es2017",
+    "esModuleInterop": true,
+    "moduleResolution": "node", // Added for explicit Node.js module resolution
+    "types": ["node"]           // Added 'node' to include Node.js types
+  },
+  "compileOnSave": true,
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "../node_modules",
+    "../app",
+    "**/__tests__/**",
+    "../**/*.native.ts",
+    "../**/*.native.tsx",
+    "../node_modules/@types/react-native"
+  ]
+  // Removed "extends": "expo/tsconfig.base" as it's not suitable for Cloud Functions
+}

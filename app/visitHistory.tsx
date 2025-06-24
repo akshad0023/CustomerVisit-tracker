@@ -1,4 +1,4 @@
-// app/visitHistory.tsx
+// app/visithistory.tsx
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
@@ -7,7 +7,7 @@ import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert, // FIX: Alert has been added to the import list.
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 
+// FIX: Added the optional machineNumber field
 interface Visit {
   id: string;
   name: string;
@@ -25,6 +26,7 @@ interface Visit {
   idImageUrl: string;
   lastUsed: string;
   matchAmount?: number;
+  machineNumber?: string;
 }
 
 interface IconTextInputProps extends TextInputProps {
@@ -76,7 +78,13 @@ const VisitHistoryScreen = () => {
         const data: Visit[] = snapshot.docs.map(doc => {
           const v = doc.data();
           return {
-            id: doc.id, name: v.name || 'Unknown', phone: v.phone || 'No Phone', idImageUrl: v.idImageUrl || '', lastUsed: v.lastUsed || '', matchAmount: typeof v.matchAmount === 'number' ? v.matchAmount : 0,
+            id: doc.id,
+            name: v.name || 'Unknown',
+            phone: v.phone || 'No Phone',
+            idImageUrl: v.idImageUrl || '',
+            lastUsed: v.lastUsed || '',
+            matchAmount: typeof v.matchAmount === 'number' ? v.matchAmount : 0,
+            machineNumber: v.machineNumber || '', // FIX: Get the machine number
           };
         });
         setVisits(data);
@@ -103,6 +111,7 @@ const VisitHistoryScreen = () => {
     }
   }, [searchQuery, visits]);
 
+  // FIX: Updated renderItem to display machine number
   const renderItem = ({ item }: { item: Visit }) => (
     <View style={styles.card}>
       <View style={styles.infoRow}>
@@ -113,17 +122,33 @@ const VisitHistoryScreen = () => {
         <Ionicons name="call-outline" size={20} color="#555" style={styles.icon} />
         <Text style={styles.detailText}>{item.phone}</Text>
       </View>
+
       <View style={styles.divider} />
+      
       <View style={styles.infoRow}>
         <Ionicons name="calendar-outline" size={20} color="#555" style={styles.icon} />
         <Text style={styles.detailText}>Visited on: {item.lastUsed}</Text>
       </View>
-      <View style={styles.infoRow}>
-        <Ionicons name="cash-outline" size={20} color="#28a745" style={styles.icon} />
-        <Text style={[styles.detailText, { color: '#28a745', fontWeight: '600' }]}>
-          Amount Matched: ${item.matchAmount?.toFixed(2)}
-        </Text>
-      </View>
+
+      {/* Only show the matched amount row if an amount was actually given */}
+      {item.matchAmount && item.matchAmount > 0 ? (
+        <View style={styles.infoRow}>
+          <Ionicons name="cash-outline" size={20} color="#28a745" style={styles.icon} />
+          <Text style={[styles.detailText, { color: '#28a745', fontWeight: '600' }]}>
+            Amount Matched: ${item.matchAmount?.toFixed(2)}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Only show the machine number row if one was recorded */}
+      {item.machineNumber ? (
+        <View style={styles.infoRow}>
+            <Ionicons name="game-controller-outline" size={20} color="#555" style={styles.icon} />
+            <Text style={styles.detailText}>
+              On Machine: #{item.machineNumber}
+            </Text>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -139,7 +164,8 @@ const VisitHistoryScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
-        <Text style={styles.header}>Today's Visits</Text>
+        {/* Using the brand color for the header text */}
+        <Text style={styles.header}>CMT<Text style={styles.headerNormal}> | Today's Visits</Text></Text>
         <TouchableOpacity onPress={() => router.push('/')}>
           <Ionicons name="home-outline" size={28} color="#007bff" />
         </TouchableOpacity>
@@ -173,92 +199,29 @@ const VisitHistoryScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 10,
-    backgroundColor: '#f0f2f5',
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 15,
-    marginTop: 40,
-  },
+  container: { flex: 1, paddingTop: 10, backgroundColor: '#f0f2f5', },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, marginTop: 40, },
+  // UPDATED: Header style for branding
   header: {
     fontSize: 26,
     fontWeight: 'bold',
+    color: '#007bff', // Your brand color
+  },
+  headerNormal: {
+    fontWeight: '300',
     color: '#1c1c1e',
   },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-  },
-  searchIcon: {
-    marginRight: 10,
-  },
-  searchInput: {
-    flex: 1,
-    height: 50,
-    fontSize: 16,
-    color: '#333',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 50,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 18,
-    color: 'gray',
-    textAlign: 'center',
-  },
-  card: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginVertical: 8,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  icon: {
-    marginRight: 15,
-    width: 24,
-    textAlign: 'center',
-  },
-  name: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1c1c1e',
-  },
-  detailText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#e9ecef',
-    marginVertical: 12,
-  },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, },
+  searchIcon: { marginRight: 10, },
+  searchInput: { flex: 1, height: 50, fontSize: 16, color: '#333', },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, },
+  loadingText: { marginTop: 10, fontSize: 18, color: 'gray', textAlign: 'center', },
+  card: { padding: 20, backgroundColor: '#fff', borderRadius: 12, marginVertical: 8, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, },
+  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, },
+  icon: { marginRight: 15, width: 24, textAlign: 'center', },
+  name: { fontSize: 20, fontWeight: 'bold', color: '#1c1c1e', },
+  detailText: { fontSize: 16, color: '#333', },
+  divider: { height: 1, backgroundColor: '#e9ecef', marginVertical: 8, },
 });
 
 export default VisitHistoryScreen;
