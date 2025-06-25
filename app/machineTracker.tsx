@@ -140,6 +140,26 @@ export default function MachineTracker() {
           <View style={styles.divider} />
           <SummaryRow label={`${profitLabel}:`} value={`$${Math.abs(businessProfit).toFixed(2)}`} valueColor={resultColor} isBold={true} iconName={businessProfit >= 0 ? "trending-up-outline" : "trending-down-outline"} />
         </View>
+        <TouchableOpacity
+          onPress={() => {
+            const printContent = `
+              Shift Report - ${item.employeeName}
+              Start Time: ${item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}
+              End Time: ${item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}
+              Total In: $${(item.totalIn || 0).toFixed(2)}
+              Total Out: $${(item.totalOut || 0).toFixed(2)}
+              Matched Amount: $${(item.totalMatchedAmount || 0).toFixed(2)}
+              ${item.notes ? `Notes: ${item.notes}` : ''}
+              Profit/Loss: $${Math.abs((item.totalIn || 0) - (item.totalOut || 0)).toFixed(2)}
+            `;
+            import('expo-print').then(({ printAsync }) =>
+              printAsync({ html: `<pre>${printContent}</pre>` })
+            );
+          }}
+          style={{ marginTop: 10, backgroundColor: '#007bff', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+        >
+          <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Print Shift Summary</Text>
+        </TouchableOpacity>
       </View>
     );
   };

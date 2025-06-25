@@ -35,33 +35,38 @@ export default function EmployeeShift() {
   const [isShiftStarted, setIsShiftStarted] = useState(false);
   const [isShiftEnding, setIsShiftEnding] = useState(false);
   const [shiftId, setShiftId] = useState('');
-  const [startTime, setStartTime] = useState<string | null>(null); 
+  const [startTime, setStartTime] = useState<string | null>(null);
   const [newMachine, setNewMachine] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [shiftNotes, setShiftNotes] = useState('');
 
+  // Function to get the unique storage key for the current user's ongoing shift
   const getStorageKey = () => {
     const user = auth.currentUser;
     return user ? `ongoingShift_${user.uid}` : null;
   };
 
+  // Effect to listen for authentication state changes and set readiness
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setIsReady(true);
       } else {
+        // Redirect to owner login if no user is authenticated
         router.replace('/owner');
       }
     });
-    return () => unsubscribe();
+    return () => unsubscribe(); // Cleanup subscription
   }, [router]);
-  
+
+  // Effect to restore ongoing shift state from AsyncStorage on component mount
   useEffect(() => {
-    if (!isReady) return;
+    if (!isReady) return; // Only run if auth is ready
+
     const restoreShiftState = async () => {
       const storageKey = getStorageKey();
-      if (!storageKey) return;
+      if (!storageKey) return; // No storage key if user is not identified
 
       const savedShift = await AsyncStorage.getItem(storageKey);
       if (savedShift) {
@@ -76,10 +81,11 @@ export default function EmployeeShift() {
       }
     };
     restoreShiftState();
-  }, [isReady]);
+  }, [isReady]); // Rerun when auth readiness changes
 
+  // Function to add a new machine input field
   const addMachine = () => {
-    if (!newMachine.trim()) return;
+    if (!newMachine.trim()) return; // Prevent adding empty machine numbers
     const machineKey = newMachine.trim();
     if (machineData[machineKey]) {
       Alert.alert('Duplicate Machine', `Machine ${machineKey} has already been added.`);
@@ -87,11 +93,12 @@ export default function EmployeeShift() {
     }
     setMachineData((prev) => ({
       ...prev,
-      [machineKey]: { in: '', out: '' },
+      [machineKey]: { in: '', out: '' }, // Initialize with empty strings
     }));
-    setNewMachine('');
+    setNewMachine(''); // Clear the input field
   };
 
+  // Function to handle deleting a machine from the list
   const handleDeleteMachine = (machineToDelete: string) => {
     Alert.alert(
       "Confirm Deletion",
@@ -106,7 +113,8 @@ export default function EmployeeShift() {
             if (!storageKey) return;
             setMachineData((prev) => {
               const updatedData = { ...prev };
-              delete updatedData[machineToDelete];
+              delete updatedData[machineToDelete]; // Remove the machine
+              // Merge updated machine data back into AsyncStorage
               AsyncStorage.mergeItem(storageKey, JSON.stringify({ machineData: updatedData }));
               return updatedData;
             });
@@ -116,6 +124,7 @@ export default function EmployeeShift() {
     );
   };
 
+  // Function to start a new shift
   const handleStartShift = async () => {
     if (!employeeName.trim()) {
       Alert.alert('Please enter employee name');
@@ -132,29 +141,32 @@ export default function EmployeeShift() {
     setShiftId(newShiftId);
     setStartTime(newStartTime.toISOString());
     setIsShiftStarted(true);
+    // Save initial shift state to AsyncStorage
     await AsyncStorage.setItem(storageKey, JSON.stringify({
       employeeName,
       shiftId: newShiftId,
       startTime: newStartTime.toISOString(),
-      isShiftEnding: false,
-      machineData: {},
-      shiftNotes: ''
+      isShiftEnding: false, // Mark shift as not ending yet
+      machineData: {}, // Start with empty machine data
+      shiftNotes: '' // Start with empty notes
     }));
     Alert.alert('Shift Started', `Shift for ${employeeName} has begun.`);
   };
 
+  // Function to transition to the "ending shift" state (inputting machine data)
   const handleEndShift = async () => {
-    setIsShiftEnding(true);
+    setIsShiftEnding(true); // Set state to show the machine data input fields
     const storageKey = getStorageKey();
     if (!storageKey) return;
     const current = await AsyncStorage.getItem(storageKey);
     if (current) {
       const parsed = JSON.parse(current);
-      parsed.isShiftEnding = true;
+      parsed.isShiftEnding = true; // Update AsyncStorage
       await AsyncStorage.setItem(storageKey, JSON.stringify(parsed));
     }
   };
 
+  // Function to handle changes in shift notes and save to AsyncStorage
   const handleNotesInput = (text: string) => {
     setShiftNotes(text);
     const storageKey = getStorageKey();
@@ -162,6 +174,7 @@ export default function EmployeeShift() {
     AsyncStorage.mergeItem(storageKey, JSON.stringify({ shiftNotes: text }));
   };
 
+  // Function to handle changes in machine 'in' or 'out' amounts and save to AsyncStorage
   const handleMachineInput = (machine: string, type: 'in' | 'out', value: string) => {
     const storageKey = getStorageKey();
     if (!storageKey) return;
@@ -172,20 +185,22 @@ export default function EmployeeShift() {
     });
   };
 
+  // Function to discard the current ongoing shift
   const handleDiscardShift = () => {
     Alert.alert(
       "Discard Shift",
       "Are you sure you want to discard this entire shift? All entered data will be lost.",
       [
         { text: "Cancel", style: "cancel" },
-        { 
+        {
           text: "Discard",
           style: "destructive",
           onPress: async () => {
             const storageKey = getStorageKey();
             if (storageKey) {
-              await AsyncStorage.removeItem(storageKey);
+              await AsyncStorage.removeItem(storageKey); // Clear data from AsyncStorage
             }
+            // Reset all state variables
             setIsShiftStarted(false);
             setIsShiftEnding(false);
             setEmployeeName('');
@@ -198,7 +213,8 @@ export default function EmployeeShift() {
       ]
     );
   };
-  
+
+  // Function to save the completed shift to Firestore and update bank balance
   const handleSaveShift = async () => {
     setIsSubmitting(true);
     try {
@@ -215,6 +231,7 @@ export default function EmployeeShift() {
       const ownerId = user.uid;
       const endTime = new Date();
       const shiftStartDate = startTime ? new Date(startTime) : null;
+
       let totalIn = 0, totalOut = 0;
       const machines: { [key: string]: { in: number, out: number } } = {};
       Object.entries(machineData).forEach(([machine, { in: inAmt, out: outAmt }]) => {
@@ -224,9 +241,13 @@ export default function EmployeeShift() {
         totalIn += inNum;
         totalOut += outNum;
       });
+
+      // Calculate profitOrLoss based on totalIn and totalOut for display/storage in Firestore
       const profitOrLoss = totalIn - totalOut;
-      const carryForward = totalOut;
+      const carryForward = totalOut; // Your specific business logic variable
+
       let totalMatchedAmount = 0;
+      // Query visit history within the shift time frame to calculate totalMatchedAmount
       const visitSnapshot = await getDocs(collection(db, `owners/${ownerId}/visitHistory`));
       visitSnapshot.forEach(doc => {
         const data = doc.data();
@@ -235,25 +256,43 @@ export default function EmployeeShift() {
           totalMatchedAmount += data.matchAmount || 0;
         }
       });
-      
+
+      // --- START NEW BANK BALANCE UPDATE LOGIC ---
+      // Calculate the actual net impact of THIS shift on the bank balance
+      // This is (Total In - Total Out) - Matched Amount
+      const shiftNetImpactOnBank = profitOrLoss - totalMatchedAmount; // profitOrLoss is already (totalIn - totalOut)
+
+      const currentBankBalanceStr = await AsyncStorage.getItem('bankBalance');
+      let currentBankBalance = parseFloat(currentBankBalanceStr || '0');
+
+      // Update the bank balance by adding (or subtracting if negative) the shift's net impact
+      currentBankBalance += shiftNetImpactOnBank;
+      await AsyncStorage.setItem('bankBalance', currentBankBalance.toString()); // Persist the updated balance
+
+      // No explicit state update for bankBalance here, as ProfitLossScreen will re-read it.
+      // --- END NEW BANK BALANCE UPDATE LOGIC ---
+
+      // Save the complete shift data to Firestore
       await setDoc(doc(db, `owners/${ownerId}/shifts`, shiftId), {
-        employeeName, 
-        startTime, 
-        endTime: endTime.toISOString(), 
-        machines, 
-        totalIn, 
-        totalOut, 
-        profitOrLoss, 
-        carryForward, 
-        totalMatchedAmount, 
+        employeeName,
+        startTime,
+        endTime: endTime.toISOString(),
+        machines,
+        totalIn,
+        totalOut,
+        profitOrLoss, // This value is (totalIn - totalOut)
+        carryForward,
+        totalMatchedAmount,
         notes: shiftNotes.trim(),
-        timestamp: Timestamp.now(),
+        timestamp: Timestamp.now(), // Firestore timestamp for server-side accuracy
       });
-      
+
+      // Clear ongoing shift data from AsyncStorage after successful save
       const storageKey = getStorageKey();
       if (storageKey) await AsyncStorage.removeItem(storageKey);
-      
-      Alert.alert('Shift Saved!', 'The shift data has been successfully recorded.');
+
+      Alert.alert('Shift Saved!', 'The shift data has been successfully recorded and bank balance updated.');
+      // Reset all state variables to prepare for a new shift
       setIsShiftStarted(false);
       setIsShiftEnding(false);
       setEmployeeName('');
@@ -264,10 +303,11 @@ export default function EmployeeShift() {
     } catch (error: any) {
       Alert.alert('Error Saving Shift', error.message);
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false); // Disable loading indicator
     }
   };
 
+  // Render loading indicator if not ready
   if (!isReady) {
     return (
         <View style={styles.centered}>
@@ -275,7 +315,7 @@ export default function EmployeeShift() {
         </View>
     );
   }
-  
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.headerContainer}>
@@ -330,7 +370,7 @@ export default function EmployeeShift() {
                   <Text style={[styles.machineCell, styles.machineHeadertext]}>Machine</Text>
                   <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>In ($)</Text>
                   <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>Out ($)</Text>
-                  <View style={styles.deleteButtonHeader} /> 
+                  <View style={styles.deleteButtonHeader} />
                 </View>
                 {Object.keys(machineData).sort((a,b) => parseInt(a) - parseInt(b)).map((machine) => (
                   <View key={machine} style={styles.machineRow}>
@@ -344,7 +384,7 @@ export default function EmployeeShift() {
                 ))}
               </View>
             )}
-            
+
             <View style={styles.notesContainer}>
               <Text style={styles.subHeader}>Shift Notes (Optional)</Text>
               <TextInput
