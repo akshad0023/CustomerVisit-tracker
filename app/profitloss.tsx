@@ -44,8 +44,11 @@ interface ExpenseItem {
 // New interface for Bank History Item
 interface BankHistoryItem {
   id: string;
-  amount: number;
+  amount: number; // This will now store the *change* in balance, or the new total balance, depending on how you want to log it
+  newBalance: number; // Added to store the resulting total balance
   timestamp: Timestamp;
+  type: 'set' | 'add' | 'expense' | 'deleteExpense'; // Added to distinguish transaction types
+  notes?: string; // Optional notes for the transaction
 }
 
 const SummaryRow: React.FC<{ label: string; value: string; valueColor?: string; isBold?: boolean }> = ({ label, value, valueColor = '#343a40', isBold = false }) => (
@@ -98,8 +101,8 @@ export default function ProfitLossScreen() {
 
   // --- Set Bank Balance (Modified) ---
   const handleSetBankBalance = async () => {
-    const amount = parseFloat(bankInput);
-    if (isNaN(amount)) {
+    const amountToAdd = parseFloat(bankInput); // Changed variable name to reflect addition
+    if (isNaN(amountToAdd)) {
       Alert.alert("Invalid Input", "Enter a valid number.");
       return;
     }
@@ -108,21 +111,31 @@ export default function ProfitLossScreen() {
       if (!user) throw new Error("User not logged in");
       const ownerId = user.uid;
 
+      // Get current balance from AsyncStorage
+      const currentBankBalanceStr = await AsyncStorage.getItem('bankBalance');
+      const currentBankBalance = parseFloat(currentBankBalanceStr || '0');
+
+      // Calculate the new balance (add to existing)
+      const newBalance = currentBankBalance + amountToAdd;
+
       // Save to AsyncStorage (current balance)
-      await AsyncStorage.setItem('bankBalance', amount.toString());
-      setBankBalance(amount);
+      await AsyncStorage.setItem('bankBalance', newBalance.toString());
+      setBankBalance(newBalance);
 
       // Record in Firestore history
       const historyRef = doc(collection(db, `owners/${ownerId}/bankBalanceHistory`));
       await setDoc(historyRef, {
         id: historyRef.id,
-        amount: amount,
+        amount: amountToAdd, // Amount added/subtracted
+        newBalance: newBalance, // The resulting balance
         timestamp: Timestamp.now(),
+        type: 'add', // Indicate it's an addition
+        notes: `Added ${amountToAdd.toFixed(2)} to bank balance.` // Specific note for addition
       });
 
       setBankModalVisible(false);
       setBankInput('');
-      Alert.alert("Success", `Bank balance set to $${amount.toFixed(2)} and recorded in history.`);
+      Alert.alert("Success", `Bank balance updated to $${newBalance.toFixed(2)} and recorded in history.`);
     } catch (error) {
       console.error("Error setting bank balance:", error);
       Alert.alert("Error", "Could not set bank balance.");
@@ -175,7 +188,10 @@ export default function ProfitLossScreen() {
       const history: BankHistoryItem[] = snapshot.docs.map(doc => ({
         id: doc.id,
         amount: doc.data().amount,
+        newBalance: doc.data().newBalance, // Retrieve newBalance
         timestamp: doc.data().timestamp,
+        type: doc.data().type || 'unknown', // Default to 'unknown' if not present
+        notes: doc.data().notes || ''
       }));
       setBankHistory(history);
     } catch (error) {
@@ -479,12 +495,24 @@ export default function ProfitLossScreen() {
       setBankBalance(updatedBalance);
 
       const newExpenseRef = doc(collection(db, `owners/${ownerId}/dailyExpenses`));
+      const expenseId = newExpenseRef.id;
       await setDoc(newExpenseRef, {
-        id: newExpenseRef.id,
+        id: expenseId,
         amount,
         notes: expenseNotes.trim(),
         date: expenseDate,
         timestamp: Timestamp.now()
+      });
+
+      // Record in Firestore bank balance history for expense
+      const historyRef = doc(collection(db, `owners/${ownerId}/bankBalanceHistory`));
+      await setDoc(historyRef, {
+        id: historyRef.id,
+        amount: -amount, // Negative for expense
+        newBalance: updatedBalance,
+        timestamp: Timestamp.now(),
+        type: 'expense',
+        notes: `Expense: ${expenseNotes.trim()} on ${dayjs(expenseDate).format('MMMM D, YYYY')}`
       });
 
       setExpenseModalVisible(false);
@@ -522,6 +550,7 @@ export default function ProfitLossScreen() {
       const currentBankBalanceStr = await AsyncStorage.getItem('bankBalance');
       let currentBankBalance = parseFloat(currentBankBalanceStr || '0');
 
+      // Adjust bank balance: add back old amount, then subtract new amount
       currentBankBalance += editingExpenseOldAmount;
       currentBankBalance -= newAmount;
 
@@ -534,6 +563,17 @@ export default function ProfitLossScreen() {
         notes: expenseNotes.trim(),
         date: expenseDate,
       }, { merge: true });
+
+      // Record in Firestore bank balance history for edited expense
+      const historyRef = doc(collection(db, `owners/${ownerId}/bankBalanceHistory`));
+      await setDoc(historyRef, {
+        id: historyRef.id,
+        amount: newAmount - editingExpenseOldAmount, // Net change in expense
+        newBalance: currentBankBalance,
+        timestamp: Timestamp.now(),
+        type: 'expenseEdit', // A new type for editing
+        notes: `Edited expense from $${editingExpenseOldAmount.toFixed(2)} to $${newAmount.toFixed(2)}: ${expenseNotes.trim()}`
+      });
 
       setExpenseModalVisible(false);
       Alert.alert("Success", "Expense updated and bank balance adjusted.");
@@ -603,11 +643,23 @@ export default function ProfitLossScreen() {
 
               const currentBankBalanceStr = await AsyncStorage.getItem('bankBalance');
               let currentBankBalance = parseFloat(currentBankBalanceStr || '0');
-              currentBankBalance += expenseToDelete.amount;
+              currentBankBalance += expenseToDelete.amount; // Add back the deleted expense amount
               await AsyncStorage.setItem('bankBalance', currentBankBalance.toString());
               setBankBalance(currentBankBalance);
 
               await deleteDoc(doc(db, `owners/${ownerId}/dailyExpenses`, expenseToDelete.id));
+
+              // Record in Firestore bank balance history for deleted expense
+              const historyRef = doc(collection(db, `owners/${ownerId}/bankBalanceHistory`));
+              await setDoc(historyRef, {
+                id: historyRef.id,
+                amount: expenseToDelete.amount, // Positive as it's added back
+                newBalance: currentBankBalance,
+                timestamp: Timestamp.now(),
+                type: 'deleteExpense',
+                notes: `Deleted expense: $${expenseToDelete.amount.toFixed(2)} for ${expenseToDelete.notes} on ${dayjs(expenseToDelete.date).format('MMMM D, YYYY')}`
+              });
+
 
               Alert.alert("Success", "Expense deleted and bank balance adjusted.");
               setDailyExpensesListModalVisible(false);
@@ -735,7 +787,7 @@ export default function ProfitLossScreen() {
       <View style={styles.buttonGroup}>
         <TouchableOpacity onPress={() => setBankModalVisible(true)} style={[styles.actionButton, styles.secondaryButton]}>
           <Ionicons name="wallet-outline" size={18} color="#000" />
-          <Text style={styles.actionButtonTextBlack}>Set Bank Balance</Text>
+          <Text style={styles.actionButtonTextBlack}>Add/Adjust Bank Balance</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={handleOpenBankHistory} style={[styles.actionButton, styles.secondaryButton]}>
           <Ionicons name="receipt-outline" size={18} color="#000" />
@@ -804,84 +856,85 @@ export default function ProfitLossScreen() {
               value={expenseNotes}
               onChangeText={setExpenseNotes}
             />
-            <TouchableOpacity
-              style={styles.modalSaveButton}
-              onPress={editingExpenseId ? handleEditExpense : handleSaveExpense}
-              disabled={isSubmittingExpense}
-            >
-              {isSubmittingExpense ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalButtonText}>{editingExpenseId ? "Save Changes" : "Save Expense"}</Text>}
-            </TouchableOpacity>
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setExpenseModalVisible(false)}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={editingExpenseId ? handleEditExpense : handleSaveExpense}
+                disabled={isSubmittingExpense}
+              >
+                {isSubmittingExpense ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>{editingExpenseId ? "Update Expense" : "Save Expense"}</Text>}
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Modal for setting the bank balance */}
-      <Modal visible={isBankModalVisible} transparent animationType="slide">
-        <Pressable style={styles.modalBackground} onPress={() => setBankModalVisible(false)}>
-          <Pressable style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Set Bank Balance</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Enter amount"
-              keyboardType="numeric"
-              value={bankInput}
-              onChangeText={setBankInput}
-            />
-            <TouchableOpacity style={styles.modalSaveButton} onPress={handleSetBankBalance}>
-              <Text style={styles.modalButtonText}>Save</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* NEW: Daily Expenses List Modal */}
+      {/* Daily Expenses List Modal */}
       <Modal visible={isDailyExpensesListModalVisible} transparent animationType="slide">
         <Pressable style={styles.modalBackground} onPress={() => setDailyExpensesListModalVisible(false)}>
           <Pressable style={styles.modalContent}>
             <Text style={styles.modalTitle}>Expenses for {dayjs(selectedDayForExpenses).format('MMMM D, YYYY')}</Text>
-            {currentDayExpenses.length === 0 ? (
-              <Text style={styles.centeredText}>No expenses recorded for this day.</Text>
+            {loading ? (
+              <ActivityIndicator size="small" color="#007bff" style={{ marginVertical: 20 }} />
+            ) : currentDayExpenses.length === 0 ? (
+              <Text style={styles.centeredText}>No expenses for this day.</Text>
             ) : (
               <FlatList
                 data={currentDayExpenses}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                   <View style={styles.expenseListItem}>
-                    <Text style={styles.expenseListItemText}>
-                      <Text style={{fontWeight: 'bold'}}>${item.amount.toFixed(2)}:</Text> {item.notes || 'No notes'}
-                    </Text>
-                    <View style={styles.expenseItemActions}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setDailyExpensesListModalVisible(false);
-                          openExpenseModal(item.date, item);
-                        }}
-                        style={styles.expenseActionBtn}
-                      >
-                        <Ionicons name="create-outline" size={20} color="#007bff" />
+                    <View>
+                      <Text style={styles.expenseListItemAmount}>${item.amount.toFixed(2)}</Text>
+                      <Text style={styles.expenseListItemNotes}>{item.notes}</Text>
+                    </View>
+                    <View style={styles.expenseListItemActions}>
+                      <TouchableOpacity onPress={() => openExpenseModal(item.date, item)}>
+                        <Ionicons name="create-outline" size={24} color="#007bff" />
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleDeleteExpense(item)}
-                        style={styles.expenseActionBtn}
-                      >
-                        <Ionicons name="trash-outline" size={20} color="#dc3545" />
+                      <TouchableOpacity onPress={() => handleDeleteExpense(item)} style={{ marginLeft: 15 }}>
+                        <Ionicons name="trash-outline" size={24} color="#dc3545" />
                       </TouchableOpacity>
                     </View>
                   </View>
                 )}
               />
             )}
-            <TouchableOpacity
-              style={[styles.modalSaveButton, { backgroundColor: '#6c757d', marginTop: 20 }]}
-              onPress={() => setDailyExpensesListModalVisible(false)}
-            >
-              <Text style={styles.modalButtonText}>Close</Text>
+            <TouchableOpacity style={styles.closeButton} onPress={() => setDailyExpensesListModalVisible(false)}>
+              <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* NEW: Bank History Modal */}
+      {/* Set Bank Balance Modal */}
+      <Modal visible={isBankModalVisible} transparent animationType="slide">
+        <Pressable style={styles.modalBackground} onPress={() => setBankModalVisible(false)}>
+          <Pressable style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add to Bank Balance</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Amount to add ($)"
+              keyboardType="numeric"
+              value={bankInput}
+              onChangeText={setBankInput}
+            />
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setBankModalVisible(false)}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={handleSetBankBalance}>
+                <Text style={styles.saveButtonText}>Add to Balance</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Bank History Modal */}
       <Modal visible={isBankHistoryModalVisible} transparent animationType="slide">
         <Pressable style={styles.modalBackground} onPress={() => setBankHistoryModalVisible(false)}>
           <Pressable style={styles.modalContent}>
@@ -889,28 +942,26 @@ export default function ProfitLossScreen() {
             {loadingBankHistory ? (
               <ActivityIndicator size="large" color="#007bff" style={{ marginVertical: 20 }} />
             ) : bankHistory.length === 0 ? (
-              <Text style={styles.centeredText}>No bank balance history found.</Text>
+              <Text style={styles.centeredText}>No bank balance history available.</Text>
             ) : (
               <FlatList
                 data={bankHistory}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                  <View style={styles.historyListItem}>
-                    <Text style={styles.historyListItemText}>
-                      <Text style={{fontWeight: 'bold'}}>Amount: ${item.amount.toFixed(2)}</Text>
+                  <View style={styles.historyItem}>
+                    <Text style={styles.historyItemDate}>{dayjs(item.timestamp.toDate()).format('MMMM D, YYYY h:mm A')}</Text>
+                    <Text style={styles.historyItemType}>Type: {item.type}</Text>
+                    <Text style={[styles.historyItemAmount, { color: item.amount >= 0 ? '#28a745' : '#dc3545' }]}>
+                      Amount Change: ${item.amount.toFixed(2)}
                     </Text>
-                    <Text style={styles.historyListItemDate}>
-                      {item.timestamp?.toDate ? dayjs(item.timestamp.toDate()).format('MMMM D, YYYY h:mm A') : 'N/A'}
-                    </Text>
+                    <Text style={styles.historyItemNewBalance}>New Balance: ${item.newBalance.toFixed(2)}</Text>
+                    {item.notes && <Text style={styles.historyItemNotes}>Notes: {item.notes}</Text>}
                   </View>
                 )}
               />
             )}
-            <TouchableOpacity
-              style={[styles.modalSaveButton, { backgroundColor: '#6c757d', marginTop: 20 }]}
-              onPress={() => setBankHistoryModalVisible(false)}
-            >
-              <Text style={styles.modalButtonText}>Close</Text>
+            <TouchableOpacity style={styles.closeButton} onPress={() => setBankHistoryModalVisible(false)}>
+              <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -920,47 +971,142 @@ export default function ProfitLossScreen() {
 }
 
 const styles = StyleSheet.create({
-  authContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f2f5', padding: 20 },
-  authCard: { width: '100%', maxWidth: 350, padding: 25, backgroundColor: '#fff', borderRadius: 16, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, },
-  authHeader: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 8, color: '#333' },
-  authSubtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 25 },
-  authInput: { borderWidth: 1, borderColor: '#ddd', padding: 12, borderRadius: 8, marginBottom: 15, fontSize: 16 },
-  authButton: { backgroundColor: '#007bff', padding: 15, borderRadius: 8, alignItems: 'center' },
-  authButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  forgotButton: { marginTop: 15, padding: 5 },
-  forgotButtonText: { fontSize: 14, color: '#6c757d', textAlign: 'center' },
-  container: { flex: 1, backgroundColor: '#f0f2f5', paddingTop: 10 },
-  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10, marginTop: 40 },
-  header: { fontSize: 26, fontWeight: 'bold', color: '#1c1c1e' },
-  monthSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, marginHorizontal: 10, backgroundColor: '#fff', borderRadius: 12, elevation: 2, marginBottom: 15 },
-  monthButton: { padding: 5 },
-  monthText: { fontSize: 20, fontWeight: '600', color: '#333' },
-
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    paddingTop: 50,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#555',
+  },
+  authContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#e9ecef',
+  },
+  authCard: {
+    width: '90%',
+    maxWidth: 400,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  authHeader: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 10,
+    color: '#343a40',
+  },
+  authSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#6c757d',
+  },
+  authInput: {
+    width: '100%',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ced4da',
+    borderRadius: 5,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  authButton: {
+    backgroundColor: '#007bff',
+    padding: 15,
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  authButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  forgotButton: {
+    marginTop: 15,
+    alignSelf: 'center',
+  },
+  forgotButtonText: {
+    color: '#007bff',
+    fontSize: 14,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dee2e6',
+    backgroundColor: '#fff',
+  },
+  header: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#343a40',
+  },
+  monthSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f1f3f5',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  monthButton: {
+    padding: 5,
+  },
+  monthText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#495057',
+  },
   summarySection: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 15,
-    paddingHorizontal: 5,
+    paddingVertical: 15,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#dee2e6',
   },
   summaryCardCompact: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingVertical: 15,
-    paddingHorizontal: 10,
-    marginHorizontal: 5,
     alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8f9fa',
+    width: '45%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
     elevation: 2,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3,
   },
   summaryTitleCompact: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#6c757d',
-    marginBottom: 4,
+    marginBottom: 5,
     textAlign: 'center',
   },
   summaryTotalCompact: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
   },
   addAmountWarning: {
@@ -968,114 +1114,268 @@ const styles = StyleSheet.create({
     color: '#dc3545',
     marginTop: 5,
     textAlign: 'center',
-    fontWeight: 'bold',
   },
-
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 15, marginHorizontal: 10, marginVertical: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, },
-  cardDate: { fontSize: 18, fontWeight: 'bold', color: '#007bff', marginBottom: 10 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  label: { fontSize: 16, color: '#6c757d' },
-  value: { fontSize: 16, fontWeight: '500' },
-  divider: { height: 1, backgroundColor: '#e9ecef', marginVertical: 8 },
-  notesSection: { marginTop: 15, borderTopWidth: 1, borderTopColor: '#e9ecef', paddingTop: 10 },
-  notesTitle: { fontSize: 14, fontWeight: '600', color: '#495057', marginBottom: 5 },
-  noteText: { fontSize: 14, color: '#6c757d' },
-  expenseButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 15, paddingVertical: 10, backgroundColor: '#eaf4ff', borderRadius: 8, borderWidth: 1, borderColor: '#007bff' },
-  expenseButtonText: { color: '#007bff', marginLeft: 8, fontWeight: '600' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  centeredText: { textAlign: 'center', marginTop: 50, fontSize: 16, color: 'gray' },
-  loadingText: { fontSize: 16, marginTop: 10, color: 'gray' },
-  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { width: '100%', maxWidth: 400, backgroundColor: '#fff', borderRadius: 16, padding: 25, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 10, textAlign: 'center', color: '#333' },
-  modalDate: { fontSize: 16, color: '#6c757d', textAlign: 'center', marginBottom: 20 },
-  modalInput: { borderWidth: 1, borderColor: '#ddd', padding: 12, borderRadius: 8, marginBottom: 15, fontSize: 16 },
-  modalSaveButton: { backgroundColor: '#007bff', padding: 15, borderRadius: 8, alignItems: 'center' },
-  modalButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  calendarModalContent: { width: '90%', backgroundColor: '#fff', borderRadius: 16, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, padding: 10 },
-
   buttonGroup: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginHorizontal: 10,
-    marginBottom: 15,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#dee2e6',
   },
   actionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 8,
+    paddingHorizontal: 15,
+    borderRadius: 25,
     marginHorizontal: 5,
-    borderWidth: 1,
+    minWidth: 150,
   },
   primaryButton: {
     backgroundColor: '#007bff',
-    borderColor: '#007bff',
   },
   secondaryButton: {
-    backgroundColor: '#f8f9fa',
-    borderColor: '#ccc',
+    backgroundColor: '#e9ecef',
+    borderWidth: 1,
+    borderColor: '#ced4da',
   },
   infoButton: {
     backgroundColor: '#17a2b8',
-    borderColor: '#17a2b8',
-  },
-  dangerButton: {
-    backgroundColor: '#dc3545',
-    borderColor: '#dc3545',
   },
   actionButtonText: {
     color: '#fff',
-    marginLeft: 5,
-    fontWeight: '600',
-    fontSize: 13,
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   actionButtonTextBlack: {
-    color: '#000',
-    marginLeft: 5,
-    fontWeight: '600',
-    fontSize: 13,
+    color: '#343a40',
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
-
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginVertical: 8,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  cardDate: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#343a40',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#e9ecef',
+    marginVertical: 10,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  label: {
+    fontSize: 15,
+    color: '#495057',
+  },
+  value: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  notesSection: {
+    marginTop: 10,
+    paddingLeft: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#007bff',
+  },
+  notesTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 5,
+    color: '#495057',
+  },
+  noteText: {
+    fontSize: 13,
+    color: '#6c757d',
+    marginBottom: 3,
+  },
+  expenseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#eaf6ff',
+    padding: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#007bff',
+    marginTop: 15,
+  },
+  expenseButtonText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#007bff',
+  },
+  centeredText: {
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
+    color: '#6c757d',
+  },
+  modalBackground: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 400,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  calendarModalContent: {
+    width: '95%',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+    color: '#343a40',
+  },
+  modalDate: {
+    fontSize: 16,
+    color: '#6c757d',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#ced4da',
+    borderRadius: 5,
+    padding: 10,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 10,
+  },
+  cancelButton: {
+    backgroundColor: '#6c757d',
+    padding: 12,
+    borderRadius: 5,
+    flex: 1,
+    marginRight: 10,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  saveButton: {
+    backgroundColor: '#007bff',
+    padding: 12,
+    borderRadius: 5,
+    flex: 1,
+    marginLeft: 10,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    marginTop: 20,
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 5,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ced4da',
+  },
+  closeButtonText: {
+    color: '#343a40',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   expenseListItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 5,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#e9ecef',
   },
-  expenseListItemText: {
-    flex: 1,
+  expenseListItemAmount: {
     fontSize: 16,
-    color: '#333',
+    fontWeight: 'bold',
+    color: '#dc3545',
   },
-  expenseItemActions: {
+  expenseListItemNotes: {
+    fontSize: 14,
+    color: '#495057',
+  },
+  expenseListItemActions: {
     flexDirection: 'row',
-    marginLeft: 10,
   },
-  expenseActionBtn: {
-    marginLeft: 15,
-    padding: 5,
-  },
-  // New styles for Bank History Modal
-  historyListItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  historyItem: {
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#e9ecef',
+    marginBottom: 5,
   },
-  historyListItemText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  historyListItemDate: {
+  historyItemDate: {
     fontSize: 14,
     color: '#6c757d',
+    marginBottom: 2,
+  },
+  historyItemType: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 2,
+    textTransform: 'capitalize',
+  },
+  historyItemAmount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  historyItemNewBalance: {
+    fontSize: 15,
+    color: '#343a40',
+    marginTop: 2,
+  },
+  historyItemNotes: {
+    fontSize: 13,
+    color: '#495057',
+    fontStyle: 'italic',
+    marginTop: 5,
   },
 });
