@@ -5,7 +5,7 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
+    "android": "com.akshadk.CMT",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint"
@@ -30,7 +30,6 @@
     "expo-linear-gradient": "^14.1.5",
     "expo-linking": "~7.1.5",
     "expo-media-library": "~17.1.7",
-    "expo-permissions": "^14.4.0",
     "expo-print": "~14.1.4",
     "expo-router": "~5.1.0",
     "expo-sharing": "~13.1.5",

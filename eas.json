@@ -9,7 +9,10 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "ANDROID_HOME": "/Users/Akshadk/Library/Android/sdk"
+      }
     },
     "production": {
       "autoIncrement": true

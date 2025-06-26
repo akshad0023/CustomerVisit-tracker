@@ -129,9 +129,18 @@ export default function OwnerScreen() {
       const ownerRef = doc(db, 'owners', user.uid);
       const ownerSnap = await getDoc(ownerRef);
 
-      if (!ownerSnap.exists() || ownerSnap.data().subscriptionStatus !== 'active') {
+      if (!ownerSnap.exists()) {
+        Alert.alert('Access Denied', 'Your email is not registered as an admin.');
+        auth.signOut();
+        setIsLoading(false);
+        return;
+      }
+
+      if (ownerSnap.data().subscriptionStatus !== 'active') {
         Alert.alert('Subscription Inactive', 'Your account is not active. Please contact support.');
         auth.signOut();
+        setIsLoading(false);
+        return;
       } else {
         const lastKnownPassword = await AsyncStorage.getItem('ownerPassword');
         if (lastKnownPassword && lastKnownPassword !== password) {
@@ -159,35 +168,19 @@ export default function OwnerScreen() {
   };
 
   const handlePasswordReset = () => {
-    Alert.prompt(
-      "Reset Password",
-      "Please enter your registered email address to receive a password reset link. You will set your new password through the link sent to your email.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Send Link",
-          onPress: async (emailToReset) => {
-            if (emailToReset && emailToReset.includes('@')) {
-              try {
-                await sendPasswordResetEmail(auth, emailToReset.trim());
-                Alert.alert(
-                  "Check Your Email",
-                  `A password reset link has been sent to ${emailToReset}. Please follow the instructions in the email.`
-                );
-              } catch (error: any) {
-                console.error("Password reset error:", error);
-                Alert.alert("Error", "Could not send reset email. Please ensure the email address is correct and try again.");
-              }
-            } else {
-              Alert.alert("Invalid Email", "Please enter a valid email address.");
-            }
-          },
-        },
-      ],
-      'plain-text',
-      '',
-      'email-address'
-    );
+    if (!email.includes('@')) {
+      Alert.alert("Invalid Email", "Please enter a valid email address to reset your password.");
+      return;
+    }
+
+    sendPasswordResetEmail(auth, email.trim())
+      .then(() => {
+        Alert.alert("Check Your Email", `A password reset link has been sent to ${email}.`);
+      })
+      .catch((error) => {
+        console.error("Password reset error:", error);
+        Alert.alert("Error", "Could not send reset email. Make sure the email is correct and try again.");
+      });
   };
   
   return (
