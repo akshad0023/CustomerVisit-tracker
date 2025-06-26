@@ -1,5 +1,3 @@
-// app/machinetracker.tsx
-
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -143,17 +141,45 @@ export default function MachineTracker() {
         <TouchableOpacity
           onPress={() => {
             const printContent = `
-              Shift Report - ${item.employeeName}
-              Start Time: ${item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}
-              End Time: ${item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}
-              Total In: $${(item.totalIn || 0).toFixed(2)}
-              Total Out: $${(item.totalOut || 0).toFixed(2)}
-              Matched Amount: $${(item.totalMatchedAmount || 0).toFixed(2)}
-              ${item.notes ? `Notes: ${item.notes}` : ''}
-              Profit/Loss: $${Math.abs((item.totalIn || 0) - (item.totalOut || 0)).toFixed(2)}
-            `;
+    <html>
+      <body style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2>Shift Report - ${item.employeeName}</h2>
+        <p><strong>Start Time:</strong> ${item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</p>
+        <p><strong>End Time:</strong> ${item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}</p>
+
+        ${item.notes ? `<p><strong>Shift Notes:</strong> ${item.notes}</p>` : ''}
+
+        <h3>Machine Details:</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <th style="text-align: left; border-bottom: 1px solid #ccc;">Machine</th>
+            <th style="text-align: right; border-bottom: 1px solid #ccc;">In ($)</th>
+            <th style="text-align: right; border-bottom: 1px solid #ccc;">Out ($)</th>
+          </tr>
+          ${Object.keys(item.machines || {})
+            .sort((a, b) => parseInt(a) - parseInt(b))
+            .map(machine => {
+              const m = item.machines[machine];
+              return `
+                <tr>
+                  <td>${machine}</td>
+                  <td style="text-align: right;">$${m.in.toFixed(2)}</td>
+                  <td style="text-align: right;">$${m.out.toFixed(2)}</td>
+                </tr>
+              `;
+            }).join('')}
+        </table>
+
+        <h3>Summary</h3>
+        <p><strong>Total In:</strong> $${(item.totalIn || 0).toFixed(2)}</p>
+        <p><strong>Total Out:</strong> $${(item.totalOut || 0).toFixed(2)}</p>
+        <p><strong>Matched Amount:</strong> $${(item.totalMatchedAmount || 0).toFixed(2)}</p>
+        <p><strong>Profit/Loss:</strong> $${Math.abs((item.totalIn || 0) - (item.totalOut || 0)).toFixed(2)}</p>
+      </body>
+    </html>
+  `;
             import('expo-print').then(({ printAsync }) =>
-              printAsync({ html: `<pre>${printContent}</pre>` })
+              printAsync({ html: printContent })
             );
           }}
           style={{ marginTop: 10, backgroundColor: '#007bff', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
@@ -212,3 +238,5 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 16, color: '#495057', },
   summaryValue: { fontSize: 16, fontWeight: '500', },
 });
+
+/*((()))*/
