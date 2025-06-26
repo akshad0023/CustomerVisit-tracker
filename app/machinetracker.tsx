@@ -238,3 +238,5 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 16, color: '#495057', },
   summaryValue: { fontSize: 16, fontWeight: '500', },
 });
+
+/*Thankyou*/
