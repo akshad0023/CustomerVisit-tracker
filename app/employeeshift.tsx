@@ -1,9 +1,11 @@
 // app/employeeShift.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDocs, setDoc, Timestamp } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { auth, db } from '../firebaseConfig';
+import { auth, db, storage } from '../firebaseConfig';
 
 interface IconTextInputProps extends TextInputProps {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -31,7 +33,7 @@ const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => 
 export default function EmployeeShift() {
   const router = useRouter();
   const [employeeName, setEmployeeName] = useState('');
-  const [machineData, setMachineData] = useState<{ [key: string]: { in: string; out: string } }>({});
+  const [machineData, setMachineData] = useState<{ [key: string]: { in: string; out: string; images: string[] } }>({});
   const [isShiftStarted, setIsShiftStarted] = useState(false);
   const [isShiftEnding, setIsShiftEnding] = useState(false);
   const [shiftId, setShiftId] = useState('');
@@ -40,6 +42,64 @@ export default function EmployeeShift() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [shiftNotes, setShiftNotes] = useState('');
+
+  // Function to handle taking a machine snapshot and uploading to Firebase Storage
+  const handleTakeSnapshot = async (machineKey: string) => {
+    // Only allow one snapshot per machine
+    if (machineData[machineKey]?.images.length >= 1) {
+      Alert.alert('Snapshot Exists', `Only one snapshot is allowed for Machine ${machineKey}.`);
+      return;
+    }
+
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (permissionResult.status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera access is required to take a snapshot.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 0.7,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      try {
+        const asset = result.assets[0];
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+
+        const filename = `machineSnapshots/${auth.currentUser?.uid}/${machineKey}_${Date.now()}.jpg`;
+        const imageRef = ref(storage, filename);
+
+        await uploadBytes(imageRef, blob);
+        const downloadURL = await getDownloadURL(imageRef);
+
+        setMachineData((prev) => {
+          const updated = { ...prev };
+          const current = updated[machineKey] || { in: '', out: '', images: [] };
+          const newImages = [...(current.images || []), downloadURL];
+          updated[machineKey] = {
+            ...current,
+            images: newImages,
+          };
+
+          const storageKey = getStorageKey();
+          if (storageKey) {
+            AsyncStorage.getItem(storageKey).then((savedShiftStr) => {
+              const savedShift = savedShiftStr ? JSON.parse(savedShiftStr) : {};
+              savedShift.machineData = updated;
+              AsyncStorage.setItem(storageKey, JSON.stringify(savedShift));
+            });
+          }
+
+          return updated;
+        });
+      } catch (err) {
+        console.error('Image Upload Error:', err);
+        Alert.alert('Upload Error', 'Failed to upload image. Please try again.');
+      }
+    }
+  };
 
   // Function to get the unique storage key for the current user's ongoing shift
   const getStorageKey = () => {
@@ -53,7 +113,6 @@ export default function EmployeeShift() {
       if (user) {
         setIsReady(true);
       } else {
-        // Redirect to owner login if no user is authenticated
         router.replace('/owner');
       }
     });
@@ -62,11 +121,11 @@ export default function EmployeeShift() {
 
   // Effect to restore ongoing shift state from AsyncStorage on component mount
   useEffect(() => {
-    if (!isReady) return; // Only run if auth is ready
+    if (!isReady) return;
 
     const restoreShiftState = async () => {
       const storageKey = getStorageKey();
-      if (!storageKey) return; // No storage key if user is not identified
+      if (!storageKey) return;
 
       const savedShift = await AsyncStorage.getItem(storageKey);
       if (savedShift) {
@@ -76,26 +135,39 @@ export default function EmployeeShift() {
         setStartTime(parsed.startTime);
         setIsShiftStarted(true);
         setIsShiftEnding(parsed.isShiftEnding || false);
-        setMachineData(parsed.machineData || {});
+
+        const restoredMachineData = parsed.machineData || {};
+        Object.keys(restoredMachineData).forEach(key => {
+            // Ensure images array is always initialized and is an array
+            if (!restoredMachineData[key].images || !Array.isArray(restoredMachineData[key].images)) {
+                restoredMachineData[key].images = [];
+            }
+        });
+        setMachineData(restoredMachineData);
         setShiftNotes(parsed.shiftNotes || '');
       }
     };
     restoreShiftState();
-  }, [isReady]); // Rerun when auth readiness changes
+  }, [isReady]);
 
   // Function to add a new machine input field
   const addMachine = () => {
-    if (!newMachine.trim()) return; // Prevent adding empty machine numbers
+    if (!newMachine.trim()) return;
     const machineKey = newMachine.trim();
     if (machineData[machineKey]) {
       Alert.alert('Duplicate Machine', `Machine ${machineKey} has already been added.`);
       return;
     }
-    setMachineData((prev) => ({
-      ...prev,
-      [machineKey]: { in: '', out: '' }, // Initialize with empty strings
-    }));
-    setNewMachine(''); // Clear the input field
+    setMachineData((prev) => {
+        const updated = { ...prev, [machineKey]: { in: '', out: '', images: [] } };
+        // Save to AsyncStorage immediately
+        const storageKey = getStorageKey();
+        if (storageKey) {
+            AsyncStorage.mergeItem(storageKey, JSON.stringify({ machineData: updated }));
+        }
+        return updated;
+    });
+    setNewMachine('');
   };
 
   // Function to handle deleting a machine from the list
@@ -113,8 +185,7 @@ export default function EmployeeShift() {
             if (!storageKey) return;
             setMachineData((prev) => {
               const updatedData = { ...prev };
-              delete updatedData[machineToDelete]; // Remove the machine
-              // Merge updated machine data back into AsyncStorage
+              delete updatedData[machineToDelete];
               AsyncStorage.mergeItem(storageKey, JSON.stringify({ machineData: updatedData }));
               return updatedData;
             });
@@ -141,27 +212,26 @@ export default function EmployeeShift() {
     setShiftId(newShiftId);
     setStartTime(newStartTime.toISOString());
     setIsShiftStarted(true);
-    // Save initial shift state to AsyncStorage
     await AsyncStorage.setItem(storageKey, JSON.stringify({
       employeeName,
       shiftId: newShiftId,
       startTime: newStartTime.toISOString(),
-      isShiftEnding: false, // Mark shift as not ending yet
-      machineData: {}, // Start with empty machine data
-      shiftNotes: '' // Start with empty notes
+      isShiftEnding: false,
+      machineData: {},
+      shiftNotes: ''
     }));
     Alert.alert('Shift Started', `Shift for ${employeeName} has begun.`);
   };
 
   // Function to transition to the "ending shift" state (inputting machine data)
   const handleEndShift = async () => {
-    setIsShiftEnding(true); // Set state to show the machine data input fields
+    setIsShiftEnding(true);
     const storageKey = getStorageKey();
     if (!storageKey) return;
     const current = await AsyncStorage.getItem(storageKey);
     if (current) {
       const parsed = JSON.parse(current);
-      parsed.isShiftEnding = true; // Update AsyncStorage
+      parsed.isShiftEnding = true;
       await AsyncStorage.setItem(storageKey, JSON.stringify(parsed));
     }
   };
@@ -179,7 +249,7 @@ export default function EmployeeShift() {
     const storageKey = getStorageKey();
     if (!storageKey) return;
     setMachineData((prev) => {
-      const updated = { ...prev, [machine]: { ...prev[machine], [type]: value } };
+      const updated = { ...prev, [machine]: { ...prev[machine], [type]: value, images: prev[machine]?.images || [] } };
       AsyncStorage.mergeItem(storageKey, JSON.stringify({ machineData: updated }));
       return updated;
     });
@@ -198,9 +268,8 @@ export default function EmployeeShift() {
           onPress: async () => {
             const storageKey = getStorageKey();
             if (storageKey) {
-              await AsyncStorage.removeItem(storageKey); // Clear data from AsyncStorage
+              await AsyncStorage.removeItem(storageKey);
             }
-            // Reset all state variables
             setIsShiftStarted(false);
             setIsShiftEnding(false);
             setEmployeeName('');
@@ -221,11 +290,31 @@ export default function EmployeeShift() {
       const hasMachineInput = Object.values(machineData).some(
         ({ in: i, out: o }) => (i && parseFloat(i) > 0) || (o && parseFloat(o) > 0)
       );
+
       if (!hasMachineInput) {
         Alert.alert('Missing Data', 'Please enter amounts for at least one machine.');
         setIsSubmitting(false);
         return;
       }
+
+      // !!! MODIFIED VALIDATION LOGIC: Robust snapshot check for images existence !!!
+      const machinesMissingSnapshots = Object.entries(machineData).filter(([machine, data]) => {
+        const hasIn = data?.in && parseFloat(data.in) > 0;
+        const hasOut = data?.out && parseFloat(data.out) > 0;
+        const hasImages = Array.isArray(data?.images) && data.images.length > 0;
+        // Only require snapshots if 'in' or 'out' value is provided for that machine
+        return (hasIn || hasOut) && !hasImages;
+      });
+
+      if (machinesMissingSnapshots.length > 0) {
+        const missingMachineNames = machinesMissingSnapshots.map(([name]) => name).join(', ');
+        Alert.alert('Snapshots Required', `Please upload at least one snapshot for the following machines with entered data: ${missingMachineNames}.`);
+        setIsSubmitting(false);
+        return;
+      }
+      // !!! END MODIFIED VALIDATION !!!
+
+
       const user = auth.currentUser;
       if (!user) { throw new Error('Owner not logged in. Please restart the app.'); }
       const ownerId = user.uid;
@@ -233,21 +322,26 @@ export default function EmployeeShift() {
       const shiftStartDate = startTime ? new Date(startTime) : null;
 
       let totalIn = 0, totalOut = 0;
-      const machines: { [key: string]: { in: number, out: number } } = {};
-      Object.entries(machineData).forEach(([machine, { in: inAmt, out: outAmt }]) => {
+      const machines: { [key: string]: { in: number, out: number, images: string[] } } = {};
+      const allCollectedImageUrls: string[] = [];
+
+      Object.entries(machineData).forEach(([machine, { in: inAmt, out: outAmt, images }]) => {
         const inNum = parseFloat(inAmt) || 0;
         const outNum = parseFloat(outAmt) || 0;
-        machines[machine] = { in: inNum, out: outNum };
+        machines[machine] = { in: inNum, out: outNum, images: images || [] };
         totalIn += inNum;
         totalOut += outNum;
+        images?.forEach(url => {
+          if (!allCollectedImageUrls.includes(url)) {
+            allCollectedImageUrls.push(url);
+          }
+        });
       });
 
-      // Calculate profitOrLoss based on totalIn and totalOut for display/storage in Firestore
       const profitOrLoss = totalIn - totalOut;
-      const carryForward = totalOut; // Your specific business logic variable
+      const carryForward = totalOut;
 
       let totalMatchedAmount = 0;
-      // Query visit history within the shift time frame to calculate totalMatchedAmount
       const visitSnapshot = await getDocs(collection(db, `owners/${ownerId}/visitHistory`));
       visitSnapshot.forEach(doc => {
         const data = doc.data();
@@ -257,22 +351,14 @@ export default function EmployeeShift() {
         }
       });
 
-      // --- START NEW BANK BALANCE UPDATE LOGIC ---
-      // Calculate the actual net impact of THIS shift on the bank balance
-      // This is (Total In - Total Out) - Matched Amount
-      const shiftNetImpactOnBank = profitOrLoss - totalMatchedAmount; // profitOrLoss is already (totalIn - totalOut)
+      const shiftNetImpactOnBank = profitOrLoss - totalMatchedAmount;
 
       const currentBankBalanceStr = await AsyncStorage.getItem('bankBalance');
       let currentBankBalance = parseFloat(currentBankBalanceStr || '0');
 
-      // Update the bank balance by adding (or subtracting if negative) the shift's net impact
       currentBankBalance += shiftNetImpactOnBank;
-      await AsyncStorage.setItem('bankBalance', currentBankBalance.toString()); // Persist the updated balance
+      await AsyncStorage.setItem('bankBalance', currentBankBalance.toString());
 
-      // No explicit state update for bankBalance here, as ProfitLossScreen will re-read it.
-      // --- END NEW BANK BALANCE UPDATE LOGIC ---
-
-      // Save the complete shift data to Firestore
       await setDoc(doc(db, `owners/${ownerId}/shifts`, shiftId), {
         employeeName,
         startTime,
@@ -280,19 +366,21 @@ export default function EmployeeShift() {
         machines,
         totalIn,
         totalOut,
-        profitOrLoss, // This value is (totalIn - totalOut)
+        profitOrLoss,
         carryForward,
         totalMatchedAmount,
         notes: shiftNotes.trim(),
-        timestamp: Timestamp.now(), // Firestore timestamp for server-side accuracy
+        timestamp: Timestamp.now(),
+        machineSnapshots: allCollectedImageUrls.map((url) => ({
+          url,
+          timestamp: Timestamp.now(),
+        })),
       });
 
-      // Clear ongoing shift data from AsyncStorage after successful save
       const storageKey = getStorageKey();
       if (storageKey) await AsyncStorage.removeItem(storageKey);
 
       Alert.alert('Shift Saved!', 'The shift data has been successfully recorded and bank balance updated.');
-      // Reset all state variables to prepare for a new shift
       setIsShiftStarted(false);
       setIsShiftEnding(false);
       setEmployeeName('');
@@ -303,11 +391,10 @@ export default function EmployeeShift() {
     } catch (error: any) {
       Alert.alert('Error Saving Shift', error.message);
     } finally {
-      setIsSubmitting(false); // Disable loading indicator
+      setIsSubmitting(false);
     }
   };
 
-  // Render loading indicator if not ready
   if (!isReady) {
     return (
         <View style={styles.centered}>
@@ -368,8 +455,13 @@ export default function EmployeeShift() {
               <View style={styles.machineTable}>
                 <View style={styles.machineTableHeader}>
                   <Text style={[styles.machineCell, styles.machineHeadertext]}>Machine</Text>
-                  <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>In ($)</Text>
-                  <Text style={[styles.machineCell, styles.machineHeadertext, {textAlign: 'center'}]}>Out ($)</Text>
+                  <Text style={[styles.machineCell, styles.machineHeadertext, styles.centerHeaderText]}>In ($)</Text>
+                  <Text style={[styles.machineCell, styles.machineHeadertext, styles.centerHeaderText]}>Out ($)</Text>
+                  <View style={[styles.machineCell, styles.headerSnapshotColumn]}>
+                    <View>
+                      <Text style={styles.machineHeadertextSmall}>Snap</Text>
+                    </View>
+                  </View>
                   <View style={styles.deleteButtonHeader} />
                 </View>
                 {Object.keys(machineData).sort((a,b) => parseInt(a) - parseInt(b)).map((machine) => (
@@ -377,6 +469,19 @@ export default function EmployeeShift() {
                     <Text style={[styles.machineCell, styles.machineLabel]}>{machine}</Text>
                     <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.in || ''} onChangeText={(text) => handleMachineInput(machine, 'in', text)} />
                     <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.out || ''} onChangeText={(text) => handleMachineInput(machine, 'out', text)} />
+
+                    <View style={[styles.machineCell, styles.snapshotColumn]}>
+                      <TouchableOpacity
+                        style={styles.snapshotButton}
+                        onPress={() => handleTakeSnapshot(machine)}
+                      >
+                        <Ionicons name="camera-outline" size={20} color="#fff" />
+                      </TouchableOpacity>
+                      {machineData[machine]?.images.length > 0 && (
+                        <Text style={styles.snapshotCount}>{machineData[machine].images.length}/1</Text>
+                      )}
+                    </View>
+
                     <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteMachine(machine)}>
                       <Ionicons name="trash-outline" size={22} color="#dc3545" />
                     </TouchableOpacity>
@@ -440,6 +545,10 @@ const styles = StyleSheet.create({
   machineTable: { borderWidth: 1, borderColor: '#e9ecef', borderRadius: 8, overflow: 'hidden', marginBottom: 20 },
   machineTableHeader: { flexDirection: 'row', backgroundColor: '#f8f9fa', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
   machineHeadertext: { fontWeight: 'bold', color: '#495057', padding: 12, flex: 1, },
+  // !!! NEW style for smaller header text, e.g., "Snap" !!!
+  machineHeadertextSmall: { fontWeight: 'bold', color: '#495057', fontSize: 14 },
+  centerHeaderText: { textAlign: 'center' },
+
   machineRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
   machineCell: { padding: 12, fontSize: 16, flex: 1 },
   machineLabel: { fontWeight: '500', color: '#333' },
@@ -448,4 +557,34 @@ const styles = StyleSheet.create({
   deleteButtonHeader: { padding: 12, width: 46, },
   notesContainer: { marginVertical: 20, },
   notesInput: { backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, padding: 12, fontSize: 16, textAlignVertical: 'top', height: 100, },
+
+  headerSnapshotColumn: {
+    width: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: '#e9ecef',
+    padding: 12,
+  },
+  snapshotColumn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: 5,
+    borderLeftWidth: 1,
+    borderLeftColor: '#e9ecef',
+    flex: 1.2,
+  },
+  snapshotButton: {
+    backgroundColor: '#007bff',
+    borderRadius: 8,
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  snapshotCount: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 5,
+  },
 });
