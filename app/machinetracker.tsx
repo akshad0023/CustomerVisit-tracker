@@ -1,0 +1,214 @@
+// app/machinetracker.tsx
+
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { auth, db } from '../firebaseConfig';
+
+interface Shift {
+  id: string;
+  employeeName: string;
+  startTime?: string;
+  endTime?: string;
+  machines: { [machineNumber: string]: { in: number; out: number; }; };
+  totalIn: number;
+  totalOut: number;
+  totalMatchedAmount: number;
+  profitOrLoss: number;
+  notes?: string; // Notes are optional
+}
+
+interface SummaryRowProps {
+  label: string;
+  value: string;
+  valueColor?: string;
+  isBold?: boolean;
+  iconName?: keyof typeof Ionicons.glyphMap;
+}
+
+const SummaryRow: React.FC<SummaryRowProps> = ({ label, value, valueColor = '#333', isBold = false, iconName }) => (
+  <View style={styles.summaryRow}>
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      {iconName && <Ionicons name={iconName} size={20} color={valueColor || '#333'} style={{ marginRight: 10, width: 22 }} />}
+      <Text style={[styles.summaryLabel, isBold && { fontWeight: 'bold' }]}>{label}</Text>
+    </View>
+    <Text style={[styles.summaryValue, { color: valueColor }, isBold && { fontWeight: 'bold' }]}>{value}</Text>
+  </View>
+);
+
+export default function MachineTracker() {
+  const [shiftData, setShiftData] = useState<Shift[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsReady(true);
+      } else {
+        router.replace('/owner');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  useEffect(() => {
+    if (!isReady) return;
+
+    const fetchShiftData = async () => {
+      setLoading(true);
+      try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("User not found");
+        const ownerId = user.uid;
+
+        const q = query(collection(db, 'owners', ownerId, 'shifts'), orderBy('startTime', 'desc'));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Shift[];
+        setShiftData(data);
+      } catch (error) {
+        console.error('Error fetching shift data:', error);
+        Alert.alert("Error", "Could not load shift history.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchShiftData();
+  }, [isReady]);
+
+  if (!isReady || loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#007bff" />
+        <Text style={styles.loadingText}>Loading Shift History...</Text>
+      </View>
+    );
+  }
+
+  const renderShiftCard = ({ item }: { item: Shift }) => {
+    const businessProfit = (item.totalIn || 0) - (item.totalOut || 0);
+    const resultColor = businessProfit >= 0 ? '#28a745' : '#dc3545';
+    const profitLabel = businessProfit >= 0 ? 'Profit' : 'Loss';
+    
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.employeeName}>{item.employeeName}</Text>
+          <View>
+            <Text style={styles.timeText}>Start: {item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</Text>
+            <Text style={styles.timeText}>End: {item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}</Text>
+          </View>
+        </View>
+
+        {/* Display notes if they exist */}
+        {item.notes && item.notes.trim() !== '' && (
+          <>
+            <View style={styles.divider} />
+            <View style={styles.notesSection}>
+              <Text style={styles.notesTitle}>📝 Shift Notes:</Text>
+              <Text style={styles.notesText}>{item.notes}</Text>
+            </View>
+          </>
+        )}
+
+        <View style={styles.divider} />
+        {item.machines && Object.keys(item.machines).length > 0 && (
+          <View style={styles.machineSection}>
+            <View style={styles.machineTableHeader}>
+              <Text style={[styles.machineTableCell, styles.tableHeaderText]}>Machine</Text>
+              <Text style={[styles.machineTableCell, styles.tableHeaderText, { textAlign: 'right' }]}>In ($)</Text>
+              <Text style={[styles.machineTableCell, styles.tableHeaderText, { textAlign: 'right' }]}>Out ($)</Text>
+            </View>
+            {Object.keys(item.machines).sort((a,b) => parseInt(a) - parseInt(b)).map((machine) => (
+              <View key={machine} style={styles.machineTableRow}>
+                <Text style={styles.machineTableCell}>{machine}</Text>
+                <Text style={[styles.machineTableCell, { textAlign: 'right' }]}>${item.machines[machine].in.toFixed(2)}</Text>
+                <Text style={[styles.machineTableCell, { textAlign: 'right' }]}>${item.machines[machine].out.toFixed(2)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+        <View style={styles.divider} />
+        <View style={styles.summaryContainer}>
+          <SummaryRow label="Total In:" value={`$${(item.totalIn || 0).toFixed(2)}`} iconName="arrow-down-circle-outline" valueColor="#28a745" />
+          <SummaryRow label="Total Out:" value={`$${(item.totalOut || 0).toFixed(2)}`} iconName="arrow-up-circle-outline" valueColor="#dc3545" />
+          <SummaryRow label="Matched Amount:" value={`$${(item.totalMatchedAmount || 0).toFixed(2)}`} iconName="gift-outline" valueColor="#6f42c1" />
+          <View style={styles.divider} />
+          <SummaryRow label={`${profitLabel}:`} value={`$${Math.abs(businessProfit).toFixed(2)}`} valueColor={resultColor} isBold={true} iconName={businessProfit >= 0 ? "trending-up-outline" : "trending-down-outline"} />
+        </View>
+        <TouchableOpacity
+          onPress={() => {
+            const printContent = `
+              Shift Report - ${item.employeeName}
+              Start Time: ${item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}
+              End Time: ${item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}
+              Total In: $${(item.totalIn || 0).toFixed(2)}
+              Total Out: $${(item.totalOut || 0).toFixed(2)}
+              Matched Amount: $${(item.totalMatchedAmount || 0).toFixed(2)}
+              ${item.notes ? `Notes: ${item.notes}` : ''}
+              Profit/Loss: $${Math.abs((item.totalIn || 0) - (item.totalOut || 0)).toFixed(2)}
+            `;
+            import('expo-print').then(({ printAsync }) =>
+              printAsync({ html: `<pre>${printContent}</pre>` })
+            );
+          }}
+          style={{ marginTop: 10, backgroundColor: '#007bff', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+        >
+          <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Print Shift Summary</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+  
+  return (
+    <View style={styles.container}>
+      <View style={styles.headerContainer}>
+        <Text style={styles.header}>Shift History</Text>
+        <TouchableOpacity onPress={() => router.push('/')}>
+          <Ionicons name="home-outline" size={28} color="#007bff" />
+        </TouchableOpacity>
+      </View>
+      
+      <FlatList
+        data={shiftData}
+        keyExtractor={(item) => item.id}
+        renderItem={renderShiftCard}
+        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
+        ListEmptyComponent={
+          <View style={styles.centered}>
+            <Text style={styles.loadingText}>No shift history found.</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f0f2f5', paddingTop: 10, },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10, marginTop: 40, },
+  header: { fontSize: 26, fontWeight: 'bold', color: '#1c1c1e', },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, },
+  loadingText: { marginTop: 10, fontSize: 18, color: 'gray', },
+  card: { backgroundColor: '#fff', padding: 16, marginHorizontal: 10, marginVertical: 8, borderRadius: 12, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, },
+  cardHeader: { marginBottom: 12, },
+  employeeName: { fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: '#111', },
+  timeText: { fontSize: 14, color: '#666', },
+  divider: { height: 1, backgroundColor: '#e9ecef', marginVertical: 12, },
+  notesSection: { backgroundColor: '#f8f9fa', padding: 10, borderRadius: 8, },
+  notesTitle: { fontSize: 14, fontWeight: '600', color: '#495057', marginBottom: 5, },
+  notesText: { fontSize: 14, color: '#343a40', fontStyle: 'italic', },
+  machineSection: { marginVertical: 5, },
+  machineTableHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#dee2e6', },
+  tableHeaderText: { fontSize: 14, fontWeight: '600', color: '#495057', },
+  machineTableRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, },
+  machineTableCell: { flex: 1, fontSize: 16, color: '#333', },
+  summaryContainer: { marginTop: 12, },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, },
+  summaryLabel: { fontSize: 16, color: '#495057', },
+  summaryValue: { fontSize: 16, fontWeight: '500', },
+});
