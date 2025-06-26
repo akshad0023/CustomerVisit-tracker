@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import dayjs from 'dayjs';
 import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient'; // Import LinearGradient
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { onAuthStateChanged, sendEmailVerification, updateEmail } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, setDoc, Timestamp, where } from 'firebase/firestore';
@@ -257,10 +257,10 @@ export default function Login() {
             style={styles.menuButton}
             onPress={() => setMenuVisible(prev => !prev)}
           >
-            <Ionicons name="menu" size={32} color="#1e293b" /> {/* Changed icon color for contrast with new background */}
+            <Ionicons name="menu" size={32} color="#1e293b" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.resetButton} onPress={resetForm}>
-            <Ionicons name="refresh-circle-outline" size={32} color="#1e293b" /> {/* Changed icon color for contrast with new background */}
+            <Ionicons name="refresh-circle-outline" size={32} color="#1e293b" />
           </TouchableOpacity>
 
           {menuVisible && (
@@ -348,7 +348,7 @@ export default function Login() {
                 <View style={styles.formContainer}>
                   <View style={styles.formHeader}>
                     <TouchableOpacity onPress={() => { setFormMode(null); clearCustomerInputs(); }} style={styles.backButton}>
-                      <Ionicons name="arrow-back" size={24} color="#1e293b" /> {/* Updated color to match new theme */}
+                      <Ionicons name="arrow-back" size={24} color="#1e293b" />
                     </TouchableOpacity>
                     <Text style={styles.header}>{formMode === 'new' ? 'Register New' : 'Find Existing'}</Text>
                     <View style={{ width: 24 }} />
@@ -365,13 +365,13 @@ export default function Login() {
                     <>
                       {foundCustomer ? (
                         <View style={styles.foundCustomerBox}>
-                          <Ionicons name="checkmark-circle" size={24} color="#166534" /> {/* Updated color to match new theme */}
+                          <Ionicons name="checkmark-circle" size={24} color="#166534" />
                           <View style={{ flex: 1, marginLeft: 10 }}>
                             <Text style={styles.foundCustomerName}>{foundCustomer.name}</Text>
                             <Text style={styles.foundCustomerPhone}>{foundCustomer.phone}</Text>
                           </View>
                           <TouchableOpacity onPress={() => { setFoundCustomer(null); setName(''); setPhone(''); }}>
-                            <Ionicons name="close-circle" size={24} color="#64748b" /> {/* Updated color to match new theme */}
+                            <Ionicons name="close-circle" size={24} color="#64748b" />
                           </TouchableOpacity>
                         </View>
                       ) : (
@@ -391,7 +391,7 @@ export default function Login() {
 
                   {formMode === 'new' && (
                     <TouchableOpacity style={[styles.button, styles.captureButton]} onPress={handleCaptureId}>
-                      <Ionicons name={idImage ? "camera" : "camera-outline"} size={20} color="#0284c7" /> {/* Updated color to match new theme */}
+                      <Ionicons name={idImage ? "camera" : "camera-outline"} size={20} color="#0284c7" />
                       <Text style={styles.captureButtonText}>{idImage ? 'Photo Captured!' : 'Capture Photo (Optional)'}</Text>
                     </TouchableOpacity>
                   )}
@@ -596,7 +596,7 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     position: 'absolute',
-    top: 80, // Moved further down
+    top: 80,
     left: 20,
     zIndex: 99,
     padding: 10,
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
   },
   resetButton: {
     position: 'absolute',
-    top: 80, // Moved further down
+    top: 80,
     right: 20,
     zIndex: 99,
     padding: 10,
@@ -625,8 +625,8 @@ const styles = StyleSheet.create({
   modalBackground: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-start', // Keeps the content aligned to the top for the slide-down effect
-    alignItems: 'flex-start', // Aligns the content to the left
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
     padding: 0,
   },
   menuContainer: {
@@ -634,7 +634,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 8,
     position: 'absolute',
-    top: 120, // Adjusted to appear directly below the menu button (menuButton top + height + margin)
+    top: 120,
     left: 20,
     minWidth: 240,
     shadowColor: '#000',

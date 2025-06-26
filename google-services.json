@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "468335540597",
+    "project_id": "gameroomapp-754c6",
+    "storage_bucket": "gameroomapp-754c6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:468335540597:android:243df95c95c65a2af3bb3c",
+        "android_client_info": {
+          "package_name": "com.akshadk.CMT"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmwQ4NhAfBB2M9tQW8arf6JnoxO1eHayE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
