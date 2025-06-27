@@ -74,6 +74,12 @@ export default function Login() {
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [ownerData, setOwnerData] = useState<{ hasSmsFeature?: boolean } | null>(null);
 
+  // Payout Snapshot State
+  const [showPayoutCamera, setShowPayoutCamera] = useState(false);
+  const [payoutSnapshotUri, setPayoutSnapshotUri] = useState<string | null>(null); // This will hold the URI *after* it's been taken
+  const [pendingMatchAmount, setPendingMatchAmount] = useState<number | null>(null);
+  const [pendingMachineNumber, setPendingMachineNumber] = useState<string>('');
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -149,7 +155,22 @@ export default function Login() {
     setFoundCustomer(customer); setName(customer.name); setPhone(customer.phone); setSearchModalVisible(false);
   };
 
-  const checkCredits = async () => {
+  // MODIFIED: handlePayoutSnapshot now returns the URI
+  const handlePayoutSnapshot = async (): Promise<string | null> => {
+    const p = await ImagePicker.requestCameraPermissionsAsync();
+    if (!p.granted) { Alert.alert('Camera access is required for payout snapshot!'); return null; }
+    const r = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.5 });
+    if (!r.canceled) {
+      // Don't set state here immediately, just return the URI
+      // Alert.alert('Snapshot Captured!', 'Payout photo captured successfully.'); // Moved to handlePayoutCameraFlow
+      return r.assets[0].uri;
+    }
+    return null;
+  };
+
+  // Modified checkCredits to handle payout snapshot for match > 0 (existing only)
+  // Added optional parameter to directly pass the payoutSnapshotUri
+  const checkCredits = async (capturedPayoutUri: string | null = null) => {
     const isNew = formMode === 'new';
     const cPhone = isNew ? phone.trim() : foundCustomer?.phone;
     const user = auth.currentUser;
@@ -179,11 +200,23 @@ export default function Login() {
       return;
     }
 
+    // Payout Snapshot Logic (prioritize capturedPayoutUri if present)
+    const currentPayoutUri = capturedPayoutUri || payoutSnapshotUri;
+    if (matchAmtNumber > 0) {
+      if (!currentPayoutUri) { // If no URI yet, prompt for camera
+        setPendingMatchAmount(matchAmtNumber);
+        setPendingMachineNumber(machineNumber.trim());
+        setShowPayoutCamera(true); // Open the camera modal
+        return; // Exit checkCredits, will resume after photo is taken
+      }
+    }
+
     setIsSubmitting(true);
     setMessage('Processing...');
-    const ownerId = user.uid;
+    const ownerId = user.uid; // Assuming ownerId is same as employee's UID for now
     const today = dayjs().format('YYYY-MM-DD');
     const cName = isNew ? name.trim() : foundCustomer!.name;
+
     try {
       const vRef = doc(db, `owners/${ownerId}/visitHistory`, cPhone);
       const dSnap = await getDoc(vRef);
@@ -214,7 +247,36 @@ export default function Login() {
         } catch (e) { Alert.alert('Upload Error', 'Could not upload ID.'); setIsSubmitting(false); return; }
       }
 
-      await setDoc(vRef, { lastUsed: today, name: cName, phone: cPhone, idImageUrl: url, matchAmount: matchAmtNumber, machineNumber: machineNumber.trim(), timestamp: Timestamp.now() });
+      // For payout snapshot logic (now using currentPayoutUri)
+      let payoutSnapshotUrl = '';
+      if (matchAmtNumber > 0 && currentPayoutUri) { // Only proceed if matchAmount > 0 and a URI is available
+        try {
+          const ts = Date.now();
+          const payoutPath = `owners/${ownerId}/matchSnapshots/${cPhone}/${ts}.jpg`; // Example path, you might refine this later
+          const blob = await uriToBlob(currentPayoutUri); // Use the URI directly
+          const store = getStorage();
+          const payoutRef = ref(store, payoutPath);
+          await uploadBytes(payoutRef, blob);
+          payoutSnapshotUrl = await getDownloadURL(payoutRef);
+          // Set AsyncStorage flag for pending payout (if this is still needed)
+          await AsyncStorage.setItem(`pendingPayout_${cPhone}`, 'true');
+        } catch (e) {
+          Alert.alert('Upload Error', 'Could not upload payout snapshot.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      await setDoc(vRef, {
+        lastUsed: today,
+        name: cName,
+        phone: cPhone,
+        idImageUrl: url,
+        matchAmount: matchAmtNumber,
+        machineNumber: machineNumber.trim(),
+        timestamp: Timestamp.now(),
+        ...(payoutSnapshotUrl ? { payoutSnapshotUrl } : {}) // Include URL if it exists
+      });
 
       if (isNew) {
         const cRef = doc(db, `owners/${ownerId}/customers`, cPhone);
@@ -224,11 +286,45 @@ export default function Login() {
         setMessage(`✅ Visit updated for ${cName}. Matched: $${matchAmtNumber}`);
       }
 
-      setTimeout(() => { clearCustomerInputs(); }, 2000);
+      // Reset all related states after successful submission
+      setTimeout(() => {
+        clearCustomerInputs();
+        setPayoutSnapshotUri(null); // Clear the URI for the next transaction
+        setShowPayoutCamera(false); // Make sure the modal is closed
+        setPendingMatchAmount(null);
+        setPendingMachineNumber('');
+      }, 2000);
     } catch (e) {
-      Alert.alert('Error', 'An unknown error occurred.');
+      console.error("Error during checkCredits:", e); // Log the actual error
+      Alert.alert('Error', 'An unknown error occurred during processing.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // MODIFIED: handlePayoutCameraFlow now uses the returned URI
+  const handlePayoutCameraFlow = async () => {
+    const capturedUri = await handlePayoutSnapshot(); // Capture the URI returned from the camera function
+    if (capturedUri) {
+      // Set the payoutSnapshotUri state for consistency (optional, as it's passed directly now)
+      setPayoutSnapshotUri(capturedUri);
+      Alert.alert('Snapshot Captured!', 'Payout photo captured successfully.'); // Alert here after successful capture
+
+      // Set the form fields to pending values before calling checkCredits again
+      // This ensures checkCredits uses the correct context even if user interacted with form.
+      setMatchAmount(String(pendingMatchAmount ?? ''));
+      setMachineNumber(pendingMachineNumber);
+
+      setShowPayoutCamera(false); // Close the modal NOW that we have the URI and are proceeding
+
+      // Call checkCredits with the newly captured URI to proceed with the saving logic
+      // A slight delay might still be good for UX to allow modal to visually close
+      setTimeout(() => {
+        checkCredits(capturedUri); // Pass the URI directly
+      }, 400);
+    } else {
+      // If no photo was taken, ensure modal can be closed by user or stays open
+      Alert.alert('No Photo Taken', 'Payout snapshot is required to proceed.');
     }
   };
 
@@ -300,7 +396,7 @@ export default function Login() {
           )}
 
           <Modal visible={searchModalVisible} transparent animationType="slide">
-            <View style={styles.modalBackground}>
+            <View style={styles.modalBackgroundCentered}>
               <View style={styles.selectionModal}>
                 <Text style={styles.modalTitle}>Multiple Customers Found</Text>
                 <Text style={styles.modalSubtitle}>Please select the correct customer.</Text>
@@ -315,6 +411,23 @@ export default function Login() {
                   )}
                 />
                 <TouchableOpacity onPress={() => setSearchModalVisible(false)}>
+                  <Text style={styles.modalCloseText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Modal for payout snapshot camera prompt */}
+          <Modal visible={showPayoutCamera} transparent animationType="fade">
+            <View style={styles.modalBackgroundCentered}>
+              <View style={[styles.selectionModal, { alignItems: 'center' }]}>
+                <Text style={styles.modalTitle}>Machine Snapshot Required</Text>
+                <Text style={styles.modalSubtitle}>Before saving, please take a photo of the machine where match amount is entered.</Text>
+                <TouchableOpacity style={[styles.button, styles.captureButton, { marginTop: 18 }]} onPress={handlePayoutCameraFlow}>
+                  <Ionicons name="camera-outline" size={22} color="#0284c7" />
+                  <Text style={styles.captureButtonText}>Take Snapshot</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setShowPayoutCamera(false); setPayoutSnapshotUri(null); }}>
                   <Text style={styles.modalCloseText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
@@ -396,7 +509,7 @@ export default function Login() {
                     </TouchableOpacity>
                   )}
 
-                  <TouchableOpacity style={[styles.button, styles.submitButton]} onPress={checkCredits} disabled={isSubmitting}>
+                  <TouchableOpacity style={[styles.button, styles.submitButton]} onPress={() => checkCredits()} disabled={isSubmitting}>
                     {isSubmitting ? <ActivityIndicator color="#fff" /> : (
                       <>
                         <Ionicons name="checkmark-circle-outline" size={22} color="#fff" />
@@ -629,6 +742,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     padding: 0,
   },
+  modalBackgroundCentered: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 0,
+  },
   menuContainer: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
@@ -726,6 +846,3 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 });
-
-
-/*Thankyou*/
