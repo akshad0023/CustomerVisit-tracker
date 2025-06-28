@@ -33,8 +33,8 @@ const { width } = Dimensions.get('window');
 
 // --- Casino App UI Colors ---
 const CasinoColors = {
-  background: 'black',
-  cardBackground: '#1E1E2A',
+  background: 'rgb(18, 16, 16)',
+  cardBackground: '#1A1A1A',
   primaryText: '#FFFFFF',
   secondaryText: '#BBBBBB',
   accentGold: '#FFD700',

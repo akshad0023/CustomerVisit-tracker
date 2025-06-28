@@ -39,14 +39,27 @@ interface Visit {
 }
 
 interface IconTextInputProps extends TextInputProps {
-  iconName: keyof typeof Ionicons.glyphMap;
+  iconName: string;
 }
-const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => (
-  <View style={styles.searchContainer}>
-    <Ionicons name={iconName} size={20} color="#FFD700" style={styles.searchIcon} /> {/* Gold icon */}
-    <TextInput style={styles.searchInput} {...props} placeholderTextColor="#888" /> {/* Lighter placeholder text */}
-  </View>
-);
+const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => {
+  return (
+    <View style={styles.searchContainer}>
+      {iconName ? (
+        <Ionicons
+          name={iconName as any}
+          size={20}
+          color="#FFD700"
+          style={styles.searchIcon}
+        />
+      ) : null}
+      <TextInput
+        style={styles.searchInput}
+        {...props}
+        placeholderTextColor="#888"
+      />
+    </View>
+  );
+};
 
 const VisitHistoryScreen = () => {
   const [loading, setLoading] = useState(true);

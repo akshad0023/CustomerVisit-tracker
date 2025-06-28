@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  ImageBackground,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -25,11 +25,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig'; // Assuming firebaseConfig.ts is in the same directory
-const CasinoBackground = require('../assets/images/Lion.png');
+// LionLogo image import
+const LionLogo = require('../assets/images/Logo1.png');
+// const CasinoBackground = require('../assets/images/Lion.png');
 
 // Enhanced Casino-themed colors with premium textures
 const CasinoColors = {
-  background: '#white',            // Deeper black for premium feel
+  background: 'rgb(55, 51, 51)',            // Deeper black for premium feel rgb(55, 51, 51)
   cardBackground: '#1A1A1A',        // Rich dark charcoal
   primaryText: '#FFFFFF',            // Pure white for contrast
   secondaryText: '#B8B8B8',          // Refined light grey
@@ -54,14 +56,6 @@ const CasinoColors = {
   neonGlow: '#D4AF37',              // Neon cyan for glow effects
 };
 
-// CasinoLogo - OwnerScreen style
-const CasinoLogo = () => (
-  <View style={styles.logoContainer}>
-    <View style={styles.logoInner}>
-      <Text style={styles.logoText}>GMT</Text>
-    </View>
-  </View>
-);
 // IconTextInput Component
 interface IconTextInputProps extends TextInputProps {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -105,7 +99,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 140, // Increased top padding for more background logo visibility
+    paddingTop: 100, // Reduced top padding to pull everything up
     paddingBottom: 100 ,
     paddingHorizontal: 20,
   },
@@ -113,30 +107,20 @@ const styles = StyleSheet.create({
   logoContainer: {
     marginBottom: 24,
   },
-  logoInner: {
-    width: 150,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: CasinoColors.accentGold,
-    justifyContent: 'center',
-    alignItems: 'center',
+  logoImage: {
+    width: 120,
+    height: 120,
     alignSelf: 'center',
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: CasinoColors.accentGold,
     shadowColor: CasinoColors.accentGold,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.8,
-    shadowRadius: 12,
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
     elevation: 10,
-    borderWidth: 1.5,
-    borderColor: CasinoColors.accentGoldLight,
-  },
-  logoText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-    color: CasinoColors.background,
-    textShadowColor: CasinoColors.accentGoldLight,
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
+    marginTop: 10,
+    marginBottom: 10,
   },
 
 
@@ -198,17 +182,17 @@ const styles = StyleSheet.create({
   // Enhanced Interactive Elements (Choice Cards) - ADJUSTED FONT SIZES
   choiceCard: {
     backgroundColor: CasinoColors.inputBackground,
-    padding: 20, // Increased padding
+    padding: 5, // Increased padding
     borderRadius: 15,
     borderWidth: 1.5,
     borderColor: CasinoColors.inputBorder,
     alignItems: 'center',
-    marginBottom: 20, // Increased margin bottom
+    marginVertical: 20, // Even vertical spacing between cards
     shadowColor: CasinoColors.shadowColor,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
-    elevation: 6,
+    elevation: 1,
     borderTopWidth: 2,
     borderTopColor: CasinoColors.accentGold,
   },
@@ -243,17 +227,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0, // Removed horizontal padding
   },
   backButton: {
-    padding: 10, // Increased padding
+    padding: 10,
     backgroundColor: CasinoColors.inputBackground,
     borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: CasinoColors.accentGold,
-    shadowColor: CasinoColors.accentGold,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4,
-    marginRight: 0, // Removed right margin
   },
   formContainer: {
     width: '100%'
@@ -315,7 +291,7 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     flexDirection: 'row',
-    backgroundColor: CasinoColors.buttonPrimaryBg,
+    backgroundColor: '#FFD700',
     paddingVertical: 10,
     paddingHorizontal:10,
     borderRadius: 16,
@@ -326,6 +302,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.6,
     shadowRadius: 8,
     elevation: 6,
+    marginBottom: 20, // Extra space from border
   },
   submitButtonText: {
     color: CasinoColors.buttonPrimaryText,
@@ -815,7 +792,7 @@ export default function Login() {
 
   return (
     <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-      <ImageBackground source={CasinoBackground} style={styles.fullScreenGradient} resizeMode="cover">
+      <View style={styles.fullScreenGradient}>
         <LinearGradient
           colors={[CasinoColors.background, CasinoColors.cardBackground, CasinoColors.background]}
           locations={[0, 0.5, 1]}
@@ -910,7 +887,9 @@ export default function Login() {
           </Modal>
 
           <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-           {/* <CasinoLogo /> */}
+            <View style={styles.logoContainer}>
+              <Image source={LionLogo} style={styles.logoImage} resizeMode="contain" />
+            </View>
 
             <View style={styles.card}>
               {formMode === null ? (
@@ -1009,7 +988,7 @@ export default function Login() {
           </ScrollView>
         </SafeAreaView>
         </LinearGradient>
-      </ImageBackground>
+      </View>
     </TouchableWithoutFeedback>
   );
 }
