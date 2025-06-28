@@ -30,8 +30,8 @@ interface IconTextInputProps extends TextInputProps {
 }
 const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => (
   <View style={styles.searchContainer}>
-    <Ionicons name={iconName} size={20} color="#888" style={styles.searchIcon} />
-    <TextInput style={styles.searchInput} {...props} placeholderTextColor="#aaa" />
+    <Ionicons name={iconName} size={20} color="#FFD700" style={styles.searchIcon} /> {/* Gold icon */}
+    <TextInput style={styles.searchInput} {...props} placeholderTextColor="#888" /> {/* Lighter placeholder text */}
   </View>
 );
 
@@ -110,7 +110,7 @@ export default function CustomerInfoPage() {
   if (!isReady || loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#FFD700" /> {/* Gold loading indicator */}
         <Text style={styles.loadingText}>Loading customers...</Text>
       </View>
     );
@@ -119,18 +119,18 @@ export default function CustomerInfoPage() {
   const renderCustomerCard = ({ item }: { item: Customer }) => (
     <View style={styles.card}>
       <View style={styles.infoRow}>
-        <Ionicons name="person-circle-outline" size={24} color="#333" style={styles.icon} />
+        <Ionicons name="person-circle-outline" size={24} color="#FFD700" style={styles.icon} /> {/* Gold icon */}
         <Text style={styles.name}>{item.name}</Text>
       </View>
       <View style={styles.infoRow}>
-        <Ionicons name="call-outline" size={22} color="#555" style={styles.icon} />
+        <Ionicons name="call-outline" size={22} color="#FFD700" style={styles.icon} /> {/* Gold icon */}
         <Text style={styles.phone}>{item.phone}</Text>
       </View>
       <View style={styles.divider} />
       {item.idImageUrl ? (
         // Pass the entire 'item' object to the handler
         <TouchableOpacity style={styles.viewIdButton} onPress={() => openImageModal(item)}>
-          <Ionicons name="card-outline" size={20} color="#fff" />
+          <Ionicons name="card-outline" size={20} color="#000" /> {/* Black icon on gold button */}
           <Text style={styles.viewIdButtonText}>View ID</Text>
         </TouchableOpacity>
       ) : (
@@ -147,7 +147,7 @@ export default function CustomerInfoPage() {
       <View style={styles.headerContainer}>
         <Text style={styles.header}>Customer List</Text>
         <TouchableOpacity onPress={() => router.push('/')}>
-          <Ionicons name="home-outline" size={28} color="#007bff" />
+          <Ionicons name="home-outline" size={28} color="#FFD700" /> {/* Gold home icon */}
         </TouchableOpacity>
       </View>
       
@@ -196,7 +196,7 @@ export default function CustomerInfoPage() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#f0f2f5', 
+    backgroundColor: '#121212', // Very dark background
     paddingTop: 10,
   },
   headerContainer: {
@@ -210,12 +210,14 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 26,
     fontWeight: 'bold',
-    color: '#1c1c1e',
+    color: '#FFD700', // Gold for header
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#2A2A2A', // Darker background for search input
+    borderWidth: 1,
+    borderColor: '#555555', // Darker border
     borderRadius: 12,
     paddingHorizontal: 15,
     elevation: 2,
@@ -231,7 +233,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 50,
     fontSize: 16,
-    color: '#333',
+    color: '#FFFFFF', // White text input
   },
   centered: { 
     flex: 1, 
@@ -242,12 +244,12 @@ const styles = StyleSheet.create({
   loadingText: { 
     marginTop: 10, 
     fontSize: 18, 
-    color: 'gray',
+    color: '#CCCCCC', // Light grey for loading text
     textAlign: 'center',
   },
   card: { 
     padding: 20, 
-    backgroundColor: '#fff', 
+    backgroundColor: '#1C1C1C', // Dark background for cards
     borderRadius: 12, 
     marginVertical: 8,
     elevation: 3, 
@@ -255,6 +257,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 }, 
     shadowOpacity: 0.1, 
     shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: '#333333', // Subtle border
   },
   infoRow: {
     flexDirection: 'row',
@@ -269,28 +273,28 @@ const styles = StyleSheet.create({
   name: { 
     fontSize: 20, 
     fontWeight: 'bold',
-    color: '#1c1c1e',
+    color: '#FFD700', // Gold for customer name
   },
   phone: { 
     fontSize: 16, 
-    color: '#333' 
+    color: '#CCCCCC' // Light grey for phone number
   },
   divider: {
     height: 1,
-    backgroundColor: '#e9ecef',
+    backgroundColor: '#444444', // Darker divider
     marginVertical: 8,
   },
   viewIdButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#007bff',
+    backgroundColor: '#FFD700', // Gold button
     paddingVertical: 10,
     borderRadius: 8,
     marginTop: 8,
   },
   viewIdButtonText: {
-    color: '#fff',
+    color: '#000', // Black text on gold button
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
@@ -305,7 +309,7 @@ const styles = StyleSheet.create({
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.6)', // Slightly darker overlay
   },
   footerText: {
     fontSize: 18,

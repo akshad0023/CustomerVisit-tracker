@@ -51,7 +51,7 @@ interface BankHistoryItem {
   notes?: string; // Optional notes for the transaction
 }
 
-const SummaryRow: React.FC<{ label: string; value: string; valueColor?: string; isBold?: boolean }> = ({ label, value, valueColor = '#343a40', isBold = false }) => (
+const SummaryRow: React.FC<{ label: string; value: string; valueColor?: string; isBold?: boolean }> = ({ label, value, valueColor = '#FFFFFF', isBold = false }) => ( // Changed default valueColor to #FFFFFF (white)
   <View style={styles.row}>
     <Text style={[styles.label, isBold && { fontWeight: 'bold' }]}>{label}</Text>
     <Text style={[styles.value, { color: valueColor }, isBold && { fontWeight: 'bold' }]}>{value}</Text>
@@ -374,7 +374,7 @@ export default function ProfitLossScreen() {
   const markedDates = useMemo(() => {
     const marks: { [key: string]: { marked: boolean; dotColor: string } } = {};
     reports.forEach(report => {
-      marks[report.date] = { marked: true, dotColor: report.netProfit >= 0 ? '#28a745' : '#dc3545' };
+      marks[report.date] = { marked: true, dotColor: report.netProfit >= 0 ? '#4CAF50' : '#FF6347' }; // Updated green/red
     });
     return marks;
   }, [reports]);
@@ -417,7 +417,7 @@ export default function ProfitLossScreen() {
     const htmlContent = `
       <html>
         <body>
-          <h1>Profit & Loss Report - ${dayjs(selectedMonth).format('MMMM YYYY')}</h1>
+          <h1>Profit & Loss Report - ${dayjs(selectedMonth).format('MMMMYYYY')}</h1>
           <table border="1" style="width:100%;border-collapse:collapse;">
             <tr>
               <th>Date</th>
@@ -445,7 +445,7 @@ export default function ProfitLossScreen() {
     const htmlContent = `
       <html>
         <body>
-          <h1>Daily Profit & Loss Report - ${dayjs(report.date).format('MMMM D, YYYY')}</h1>
+          <h1>Daily Profit & Loss Report - ${dayjs(report.date).format('MMMM D,YYYY')}</h1>
           <table border="1" style="width:100%;border-collapse:collapse;">
             <tr><th>Shift Profit/Loss</th><td>${report.shiftProfitLoss.toFixed(2)}</td></tr>
             <tr><th>Matched Amount</th><td>${report.totalMatchedAmount.toFixed(2)}</td></tr>
@@ -512,7 +512,7 @@ export default function ProfitLossScreen() {
         newBalance: updatedBalance,
         timestamp: Timestamp.now(),
         type: 'expense',
-        notes: `Expense: ${expenseNotes.trim()} on ${dayjs(expenseDate).format('MMMM D, YYYY')}`
+        notes: `Expense: ${expenseNotes.trim()} on ${dayjs(expenseDate).format('MMMM D,YYYY')}`
       });
 
       setExpenseModalVisible(false);
@@ -629,7 +629,7 @@ export default function ProfitLossScreen() {
   const handleDeleteExpense = async (expenseToDelete: ExpenseItem) => {
     Alert.alert(
       "Delete Expense",
-      `Are you sure you want to delete the $${expenseToDelete.amount.toFixed(2)} expense for ${dayjs(expenseToDelete.date).format('MMMM D, YYYY')}? This cannot be undone.`,
+      `Are you sure you want to delete the $${expenseToDelete.amount.toFixed(2)} expense for ${dayjs(expenseToDelete.date).format('MMMM D,YYYY')}? This cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -657,7 +657,7 @@ export default function ProfitLossScreen() {
                 newBalance: currentBankBalance,
                 timestamp: Timestamp.now(),
                 type: 'deleteExpense',
-                notes: `Deleted expense: $${expenseToDelete.amount.toFixed(2)} for ${expenseToDelete.notes} on ${dayjs(expenseToDelete.date).format('MMMM D, YYYY')}`
+                notes: `Deleted expense: $${expenseToDelete.amount.toFixed(2)} for ${expenseToDelete.notes} on ${dayjs(expenseToDelete.date).format('MMMM D,YYYY')}`
               });
 
 
@@ -678,9 +678,9 @@ export default function ProfitLossScreen() {
 
   const renderReportCard = ({ item }: { item: DailyReport }) => (
     <View style={styles.card}>
-      <Text style={styles.cardDate}>{dayjs(item.date).format('dddd, MMMM D, YYYY')}</Text>
+      <Text style={styles.cardDate}>{dayjs(item.date).format('dddd, MMMM D,YYYY')}</Text>
       <View style={styles.divider} />
-      <SummaryRow label="Shift Profit / Loss:" value={`$${item.shiftProfitLoss.toFixed(2)}`} valueColor={item.shiftProfitLoss >= 0 ? '#28a745' : '#dc3545'} />
+      <SummaryRow label="Shift Profit / Loss:" value={`$${item.shiftProfitLoss.toFixed(2)}`} valueColor={item.shiftProfitLoss >= 0 ? '#4CAF50' : '#FF6347'} />
       <SummaryRow label="(-) Matched Amount:" value={`$${item.totalMatchedAmount.toFixed(2)}`} />
       <SummaryRow label="(-) Expenses:" value={`$${item.totalExpenses.toFixed(2)}`} />
       {item.expenseNotes.length > 0 && (
@@ -692,26 +692,26 @@ export default function ProfitLossScreen() {
         </View>
       )}
       <View style={styles.divider} />
-      <SummaryRow label="Day's Net Total:" value={`$${item.netProfit.toFixed(2)}`} valueColor={item.netProfit >= 0 ? '#28a745' : '#dc3545'} isBold={true} />
+      <SummaryRow label="Day's Net Total:" value={`$${item.netProfit.toFixed(2)}`} valueColor={item.netProfit >= 0 ? '#4CAF50' : '#FF6347'} isBold={true} />
 
-      <TouchableOpacity style={styles.expenseButton} onPress={() => openExpenseModal(item.date)}>
-        <Ionicons name="add-circle-outline" size={20} color="#007bff"/>
-        <Text style={styles.expenseButtonText}>Add New Expense</Text>
+      <TouchableOpacity style={styles.cardActionButton} onPress={() => openExpenseModal(item.date)}>
+        <Ionicons name="add-circle-outline" size={20} color="#FFD700"/>
+        <Text style={styles.cardActionButtonText}>Add New Expense</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.expenseButton, { marginTop: 10, backgroundColor: '#e6e6ff', borderColor: '#6a5acd' }]} onPress={() => openDayExpensesListModal(item.date)}>
-        <Ionicons name="pencil-outline" size={20} color="#6a5acd"/>
-        <Text style={[styles.expenseButtonText, { color: '#6a5acd' }]}>View/Edit Expenses</Text>
+      <TouchableOpacity style={styles.cardActionButton} onPress={() => openDayExpensesListModal(item.date)}>
+        <Ionicons name="pencil-outline" size={20} color="#FFD700"/>
+        <Text style={styles.cardActionButtonText}>View/Edit Expenses</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.expenseButton, { marginTop: 10 }]} onPress={() => handlePrintDay(item)}>
-        <Ionicons name="print-outline" size={20} color="#6c757d"/>
-        <Text style={[styles.expenseButtonText, { color: '#6c757d' }]}>Print This Day</Text>
+      <TouchableOpacity style={styles.cardActionButton} onPress={() => handlePrintDay(item)}>
+        <Ionicons name="print-outline" size={20} color="#FFD700"/> {/* Changed icon color to gold */}
+        <Text style={styles.cardActionButtonText}>Print This Day</Text> {/* Changed text style to gold */}
       </TouchableOpacity>
     </View>
   );
 
   if (!isReady || authLoading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
+    return <View style={styles.centered}><ActivityIndicator size="large" color="#FFD700" /></View>;
   }
 
   if (!isAuthorized) {
@@ -719,12 +719,12 @@ export default function ProfitLossScreen() {
       <ScrollView contentContainerStyle={styles.authContainer}>
         {hasReportingPass ? (
           <View style={styles.authCard}>
-            <Ionicons name="lock-closed-outline" size={40} color="#007bff" style={{ alignSelf: 'center' }}/>
+            <Ionicons name="lock-closed-outline" size={40} color="#FFD700" style={{ alignSelf: 'center' }}/>
             <Text style={styles.authHeader}>Report Access</Text>
             <Text style={styles.authSubtitle}>Enter your reporting password to view this page.</Text>
-            <TextInput style={styles.authInput} placeholder="Reporting Password" secureTextEntry value={passwordInput} onChangeText={setPasswordInput} onSubmitEditing={handleUnlock} />
+            <TextInput style={styles.authInput} placeholder="Reporting Password" placeholderTextColor="#888" secureTextEntry value={passwordInput} onChangeText={setPasswordInput} onSubmitEditing={handleUnlock} />
             <TouchableOpacity style={styles.authButton} onPress={handleUnlock} disabled={authLoading}>
-              {authLoading ? <ActivityIndicator color="#fff"/> : <Text style={styles.authButtonText}>Unlock</Text>}
+              {authLoading ? <ActivityIndicator color="#000"/> : <Text style={styles.authButtonText}>Unlock</Text>}
             </TouchableOpacity>
             <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotButton}>
                 <Text style={styles.forgotButtonText}>Forgot Password?</Text>
@@ -732,13 +732,13 @@ export default function ProfitLossScreen() {
           </View>
         ) : (
           <View style={styles.authCard}>
-            <Ionicons name="shield-outline" size={40} color="#28a745" style={{ alignSelf: 'center' }}/>
+            <Ionicons name="shield-outline" size={40} color="#FFD700" style={{ alignSelf: 'center' }}/>
             <Text style={styles.authHeader}>Set Up Reporting Password</Text>
             <Text style={styles.authSubtitle}>Must contain letters, numbers, and special characters (@$!%*?&).</Text>
-            <TextInput style={styles.authInput} placeholder="Create Password (min 4 chars)" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
-            <TextInput style={styles.authInput} placeholder="Confirm Password" secureTextEntry value={confirmNewPassword} onChangeText={setConfirmNewPassword} onSubmitEditing={handleCreatePassword} />
+            <TextInput style={styles.authInput} placeholder="Create Password (min 4 chars)" placeholderTextColor="#888" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
+            <TextInput style={styles.authInput} placeholder="Confirm Password" placeholderTextColor="#888" secureTextEntry value={confirmNewPassword} onChangeText={setConfirmNewPassword} onSubmitEditing={handleCreatePassword} />
             <TouchableOpacity style={styles.authButton} onPress={handleCreatePassword} disabled={authLoading}>
-              {authLoading ? <ActivityIndicator color="#fff"/> : <Text style={styles.authButtonText}>Create and Continue</Text>}
+              {authLoading ? <ActivityIndicator color="#000"/> : <Text style={styles.authButtonText}>Create and Continue</Text>}
             </TouchableOpacity>
           </View>
         )}
@@ -751,30 +751,30 @@ export default function ProfitLossScreen() {
       <View style={styles.headerContainer}>
         <Text style={styles.header}>Profit & Loss</Text>
         <TouchableOpacity onPress={() => router.push('/')}>
-          <Ionicons name="home-outline" size={28} color="#007bff" />
+          <Ionicons name="home-outline" size={28} color="#FFD700" />
         </TouchableOpacity>
       </View>
       <View style={styles.monthSelector}>
         <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.monthButton}>
-          <Ionicons name="chevron-back-outline" size={28} color="#007bff" />
+          <Ionicons name="chevron-back-outline" size={28} color="#FFD700" />
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setCalendarVisible(true)}>
           <Text style={styles.monthText}>{dayjs(selectedMonth).format('MMMM YYYY')}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => changeMonth(1)} style={styles.monthButton}>
-          <Ionicons name="chevron-forward-outline" size={28} color="#007bff" />
+          <Ionicons name="chevron-forward-outline" size={28} color="#FFD700" />
         </TouchableOpacity>
       </View>
       <View style={styles.summarySection}>
         <View style={styles.summaryCardCompact}>
           <Text style={styles.summaryTitleCompact}>Net Profit ({dayjs(selectedMonth).format('MMMM')})</Text>
-          <Text style={[styles.summaryTotalCompact, {color: monthlyTotals.netProfit >= 0 ? '#28a745' : '#dc3545'}]}>
+          <Text style={[styles.summaryTotalCompact, {color: monthlyTotals.netProfit >= 0 ? '#4CAF50' : '#FF6347'}]}>
             ${monthlyTotals.netProfit.toFixed(2)}
           </Text>
         </View>
-        <View style={[styles.summaryCardCompact, { backgroundColor: '#e9f5ff' }]}>
+        <View style={styles.summaryCardCompact}>
           <Text style={styles.summaryTitleCompact}>Bank Balance</Text>
-          <Text style={[styles.summaryTotalCompact, {color: bankBalance >= 0 ? '#007bff' : '#dc3545'}]}>
+          <Text style={[styles.summaryTotalCompact, {color: bankBalance >= 0 ? '#FFD700' : '#FF6347'}]}>
             ${bankBalance.toFixed(2)}
           </Text>
           {bankBalance <= 0 && (
@@ -785,187 +785,227 @@ export default function ProfitLossScreen() {
 
       {/* Button Group for Bank Actions (Set Bank Balance & View History) */}
       <View style={styles.buttonGroup}>
-        <TouchableOpacity onPress={() => setBankModalVisible(true)} style={[styles.actionButton, styles.secondaryButton]}>
+        <TouchableOpacity onPress={() => setBankModalVisible(true)} style={styles.mainActionButton}>
           <Ionicons name="wallet-outline" size={18} color="#000" />
-          <Text style={styles.actionButtonTextBlack}>Add/Adjust Bank Balance</Text>
+          <Text style={styles.mainActionButtonText}>Adjust Balance</Text> {/* Shortened text */}
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleOpenBankHistory} style={[styles.actionButton, styles.secondaryButton]}>
+        <TouchableOpacity onPress={handleOpenBankHistory} style={styles.mainActionButton}>
           <Ionicons name="receipt-outline" size={18} color="#000" />
-          <Text style={styles.actionButtonTextBlack}>View Bank History</Text>
+          <Text style={styles.mainActionButtonText}>View Bank History</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Button Group for Export/Print */}
       <View style={styles.buttonGroup}>
-        <TouchableOpacity onPress={handleExportToCSV} style={[styles.actionButton, styles.primaryButton]}>
-          <Ionicons name="download-outline" size={18} color="#fff" />
-          <Text style={styles.actionButtonText}>Export to CSV</Text>
+        <TouchableOpacity onPress={handleExportToCSV} style={styles.mainActionButton}>
+          <Ionicons name="share-outline" size={18} color="#000" />
+          <Text style={styles.mainActionButtonText}>Export CSV</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={handlePrint} style={[styles.actionButton, styles.infoButton]}>
-          <Ionicons name="print-outline" size={18} color="#fff" />
-          <Text style={styles.actionButtonText}>Print Report</Text>
+        <TouchableOpacity onPress={handlePrint} style={styles.mainActionButton}>
+          <Ionicons name="print-outline" size={18} color="#000" />
+          <Text style={styles.mainActionButtonText}>Print Month</Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#007bff" />
-          <Text style={styles.loadingText}>Calculating Report...</Text>
-        </View>
+        <ActivityIndicator size="large" color="#FFD700" style={styles.loadingIndicator} />
+      ) : reports.length === 0 ? (
+        <Text style={styles.noDataText}>No data available for {dayjs(selectedMonth).format('MMMM YYYY')}.</Text>
       ) : (
         <FlatList
           ref={flatListRef}
           data={reports}
-          renderItem={renderReportCard}
           keyExtractor={(item) => item.date}
-          ListEmptyComponent={<Text style={styles.centeredText}>No data found for this month.</Text>}
-          contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
+          renderItem={renderReportCard}
+          contentContainerStyle={styles.listContent}
         />
       )}
-      <Modal visible={isCalendarVisible} transparent animationType="fade">
-        <Pressable style={styles.modalBackground} onPress={() => setCalendarVisible(false)}>
-          <Pressable style={styles.calendarModalContent}>
+
+      {/* Calendar Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isCalendarVisible}
+        onRequestClose={() => setCalendarVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setCalendarVisible(false)}>
+          <View style={styles.calendarModalContent}>
             <Calendar
-              current={dayjs(selectedMonth).format('YYYY-MM-DD')}
               onDayPress={handleDayPress}
-              monthFormat={'MMMM YYYY'}
               markedDates={markedDates}
-              theme={{ selectedDayBackgroundColor: '#007bff', todayTextColor: '#007bff', arrowColor: '#007bff' }}
+              current={selectedMonth.toISOString()}
+              theme={{
+                backgroundColor: '#1C1C1C', // Dark background for calendar
+                calendarBackground: '#1C1C1C',
+                textSectionTitleColor: '#FFD700', // Gold for day titles (Mon, Tue)
+                selectedDayBackgroundColor: '#FFD700', // Gold for selected day
+                selectedDayTextColor: '#000000', // Black text on selected day
+                todayTextColor: '#FFD700', // Gold for today
+                dayTextColor: '#FFFFFF', // White for other days
+                textDisabledColor: '#444444',
+                dotColor: '#FFD700',
+                selectedDotColor: '#000000',
+                arrowColor: '#FFD700', // Gold for month navigation arrows
+                monthTextColor: '#FFD700', // Gold for month name
+                textMonthFontWeight: 'bold',
+                textDayHeaderFontWeight: '500',
+              }}
             />
-          </Pressable>
+            <TouchableOpacity style={styles.modalCloseButton} onPress={() => setCalendarVisible(false)}>
+              <Text style={styles.modalCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
         </Pressable>
       </Modal>
 
-      {/* Add/Edit Expense Modal */}
-      <Modal visible={isExpenseModalVisible} transparent animationType="slide">
-        <Pressable style={styles.modalBackground} onPress={() => setExpenseModalVisible(false)}>
-          <Pressable style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{editingExpenseId ? "Edit Expense" : "Add Expense"}</Text>
-            <Text style={styles.modalDate}>For: {dayjs(expenseDate).format('MMMM D, YYYY')}</Text>
+      {/* Expense Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isExpenseModalVisible}
+        onRequestClose={() => setExpenseModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setExpenseModalVisible(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{editingExpenseId ? "Edit Expense" : "Add New Expense"}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Amount ($)"
+              placeholder="Amount"
+              placeholderTextColor="#888"
               keyboardType="numeric"
               value={expenseAmount}
               onChangeText={setExpenseAmount}
             />
             <TextInput
               style={[styles.modalInput, { height: 80 }]}
-              placeholder="Notes (e.g., Food, Supplies)"
+              placeholder="Notes (optional)"
+              placeholderTextColor="#888"
               multiline
               value={expenseNotes}
               onChangeText={setExpenseNotes}
             />
-            <View style={styles.modalButtonContainer}>
-              <TouchableOpacity style={styles.cancelButton} onPress={() => setExpenseModalVisible(false)}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={editingExpenseId ? handleEditExpense : handleSaveExpense}
-                disabled={isSubmittingExpense}
-              >
-                {isSubmittingExpense ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>{editingExpenseId ? "Update Expense" : "Save Expense"}</Text>}
-              </TouchableOpacity>
-            </View>
-          </Pressable>
+            <Text style={styles.modalDateText}>For Date: {dayjs(expenseDate).format('MMMM D,YYYY')}</Text>
+            <TouchableOpacity
+              style={styles.modalPrimaryButton}
+              onPress={editingExpenseId ? handleEditExpense : handleSaveExpense}
+              disabled={isSubmittingExpense}
+            >
+              {isSubmittingExpense ? <ActivityIndicator color="#000"/> : <Text style={styles.modalPrimaryButtonText}>{editingExpenseId ? "Update Expense" : "Save Expense"}</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setExpenseModalVisible(false)}>
+              <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         </Pressable>
       </Modal>
 
       {/* Daily Expenses List Modal */}
-      <Modal visible={isDailyExpensesListModalVisible} transparent animationType="slide">
-        <Pressable style={styles.modalBackground} onPress={() => setDailyExpensesListModalVisible(false)}>
-          <Pressable style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Expenses for {dayjs(selectedDayForExpenses).format('MMMM D, YYYY')}</Text>
-            {loading ? (
-              <ActivityIndicator size="small" color="#007bff" style={{ marginVertical: 20 }} />
-            ) : currentDayExpenses.length === 0 ? (
-              <Text style={styles.centeredText}>No expenses for this day.</Text>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isDailyExpensesListModalVisible}
+        onRequestClose={() => setDailyExpensesListModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setDailyExpensesListModalVisible(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Expenses for {dayjs(selectedDayForExpenses).format('MMMM D,YYYY')}</Text>
+            {currentDayExpenses.length === 0 ? (
+              <Text style={styles.noDataText}>No expenses for this day.</Text>
             ) : (
               <FlatList
                 data={currentDayExpenses}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                   <View style={styles.expenseListItem}>
-                    <View>
-                      <Text style={styles.expenseListItemAmount}>${item.amount.toFixed(2)}</Text>
-                      <Text style={styles.expenseListItemNotes}>{item.notes}</Text>
-                    </View>
+                    <Text style={styles.expenseListItemText}>${item.amount.toFixed(2)} - {item.notes}</Text>
                     <View style={styles.expenseListItemActions}>
                       <TouchableOpacity onPress={() => openExpenseModal(item.date, item)}>
-                        <Ionicons name="create-outline" size={24} color="#007bff" />
+                        <Ionicons name="create-outline" size={24} color="#FFD700" />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteExpense(item)} style={{ marginLeft: 15 }}>
-                        <Ionicons name="trash-outline" size={24} color="#dc3545" />
+                      <TouchableOpacity onPress={() => handleDeleteExpense(item)}>
+                        <Ionicons name="trash-outline" size={24} color="#FF6347" style={{ marginLeft: 10 }} />
                       </TouchableOpacity>
                     </View>
                   </View>
                 )}
               />
             )}
-            <TouchableOpacity style={styles.closeButton} onPress={() => setDailyExpensesListModalVisible(false)}>
-              <Text style={styles.closeButtonText}>Close</Text>
+            <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setDailyExpensesListModalVisible(false)}>
+              <Text style={styles.modalSecondaryButtonText}>Close</Text>
             </TouchableOpacity>
-          </Pressable>
+          </View>
         </Pressable>
       </Modal>
 
-      {/* Set Bank Balance Modal */}
-      <Modal visible={isBankModalVisible} transparent animationType="slide">
-        <Pressable style={styles.modalBackground} onPress={() => setBankModalVisible(false)}>
-          <Pressable style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add to Bank Balance</Text>
+      {/* Bank Balance Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isBankModalVisible}
+        onRequestClose={() => setBankModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setBankModalVisible(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Adjust Bank Balance</Text> {/* Shortened title */}
             <TextInput
               style={styles.modalInput}
-              placeholder="Amount to add ($)"
+              placeholder="Amount to add/subtract (e.g., 100 or -50)"
+              placeholderTextColor="#888"
               keyboardType="numeric"
               value={bankInput}
               onChangeText={setBankInput}
             />
-            <View style={styles.modalButtonContainer}>
-              <TouchableOpacity style={styles.cancelButton} onPress={() => setBankModalVisible(false)}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveButton} onPress={handleSetBankBalance}>
-                <Text style={styles.saveButtonText}>Add to Balance</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
+            <TouchableOpacity style={styles.modalPrimaryButton} onPress={handleSetBankBalance}>
+              <Text style={styles.modalPrimaryButtonText}>Update Balance</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setBankModalVisible(false)}>
+              <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         </Pressable>
       </Modal>
 
       {/* Bank History Modal */}
-      <Modal visible={isBankHistoryModalVisible} transparent animationType="slide">
-        <Pressable style={styles.modalBackground} onPress={() => setBankHistoryModalVisible(false)}>
-          <Pressable style={styles.modalContent}>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isBankHistoryModalVisible}
+        onRequestClose={() => setBankHistoryModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setBankHistoryModalVisible(false)}>
+          <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Bank Balance History</Text>
             {loadingBankHistory ? (
-              <ActivityIndicator size="large" color="#007bff" style={{ marginVertical: 20 }} />
+              <ActivityIndicator size="large" color="#FFD700" />
             ) : bankHistory.length === 0 ? (
-              <Text style={styles.centeredText}>No bank balance history available.</Text>
+              <Text style={styles.noDataText}>No bank history available.</Text>
             ) : (
               <FlatList
                 data={bankHistory}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                  <View style={styles.historyItem}>
-                    <Text style={styles.historyItemDate}>{dayjs(item.timestamp.toDate()).format('MMMM D, YYYY h:mm A')}</Text>
-                    <Text style={styles.historyItemType}>Type: {item.type}</Text>
-                    <Text style={[styles.historyItemAmount, { color: item.amount >= 0 ? '#28a745' : '#dc3545' }]}>
-                      Amount Change: ${item.amount.toFixed(2)}
+                  <View style={styles.historyListItem}>
+                    <Text style={styles.historyListItemDate}>{dayjs(item.timestamp.toDate()).format('MM/DD/YYYY h:mm A')}</Text>
+                    <Text style={styles.historyListItemText}>
+                        Type: <Text style={{ color: item.type === 'add' ? '#4CAF50' : item.type === 'expense' ? '#FF6347' : '#FFFFFF' }}>{item.type}</Text>
                     </Text>
-                    <Text style={styles.historyItemNewBalance}>New Balance: ${item.newBalance.toFixed(2)}</Text>
-                    {item.notes && <Text style={styles.historyItemNotes}>Notes: {item.notes}</Text>}
+                    <Text style={styles.historyListItemText}>
+                        Change: <Text style={{ color: item.amount >= 0 ? '#4CAF50' : '#FF6347' }}>${item.amount.toFixed(2)}</Text>
+                    </Text>
+                    <Text style={styles.historyListItemText}>
+                        New Balance: <Text style={{ color: item.newBalance >= 0 ? '#FFD700' : '#FF6347' }}>${item.newBalance.toFixed(2)}</Text>
+                    </Text>
+                    {item.notes && <Text style={styles.historyListItemNotes}>Notes: {item.notes}</Text>}
                   </View>
                 )}
               />
             )}
-            <TouchableOpacity style={styles.closeButton} onPress={() => setBankHistoryModalVisible(false)}>
-              <Text style={styles.closeButtonText}>Close</Text>
+            <TouchableOpacity style={styles.modalSecondaryButton} onPress={() => setBankHistoryModalVisible(false)}>
+              <Text style={styles.modalSecondaryButtonText}>Close</Text>
             </TouchableOpacity>
-          </Pressable>
+          </View>
         </Pressable>
       </Modal>
+
     </View>
   );
 }
@@ -973,209 +1013,131 @@ export default function ProfitLossScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
-    paddingTop: 50,
+    backgroundColor: '#121212', // Very dark background
+    padding: 20,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#555',
-  },
-  authContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#e9ecef',
-  },
-  authCard: {
-    width: '90%',
-    maxWidth: 400,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  authHeader: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-    color: '#343a40',
-  },
-  authSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#6c757d',
-  },
-  authInput: {
-    width: '100%',
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#ced4da',
-    borderRadius: 5,
-    marginBottom: 15,
-    fontSize: 16,
-  },
-  authButton: {
-    backgroundColor: '#007bff',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-  },
-  authButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  forgotButton: {
-    marginTop: 15,
-    alignSelf: 'center',
-  },
-  forgotButtonText: {
-    color: '#007bff',
-    fontSize: 14,
+    backgroundColor: '#121212',
   },
   headerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#dee2e6',
-    backgroundColor: '#fff',
+    marginBottom: 20,
+    paddingTop: 30,
   },
   header: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#343a40',
+    color: '#FFD700', // Gold for header
   },
   monthSelector: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    backgroundColor: '#f1f3f5',
+    marginBottom: 20,
+    backgroundColor: '#1C1C1C', // Slightly lighter dark for the selector
+    borderRadius: 10,
     paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
   },
   monthButton: {
-    padding: 5,
+    padding: 10,
   },
   monthText: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#495057',
+    color: '#FFD700', // Gold for month text
   },
   summarySection: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 15,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#dee2e6',
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
   summaryCardCompact: {
+    flex: 1,
+    backgroundColor: '#1C1C1C', // Dark background for summary cards
+    borderRadius: 10,
+    padding: 15,
+    marginHorizontal: 5,
     alignItems: 'center',
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#f8f9fa',
-    width: '45%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 2,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#333333', // Subtle border
   },
   summaryTitleCompact: {
     fontSize: 14,
-    color: '#6c757d',
+    color: '#CCCCCC', // Light grey for titles
     marginBottom: 5,
-    textAlign: 'center',
+    fontWeight: '600',
   },
   summaryTotalCompact: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   addAmountWarning: {
     fontSize: 12,
-    color: '#dc3545',
+    color: '#FF6347', // Red for warning
     marginTop: 5,
     textAlign: 'center',
   },
   buttonGroup: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: 10,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#dee2e6',
+    marginBottom: 15,
   },
-  actionButton: {
+  // Main action buttons (Export, Print, Bank)
+  mainActionButton: {
+    backgroundColor: '#FFD700', // Gold button
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 25,
     marginHorizontal: 5,
-    minWidth: 150,
+    flex: 1,
   },
-  primaryButton: {
-    backgroundColor: '#007bff',
-  },
-  secondaryButton: {
-    backgroundColor: '#e9ecef',
-    borderWidth: 1,
-    borderColor: '#ced4da',
-  },
-  infoButton: {
-    backgroundColor: '#17a2b8',
-  },
-  actionButtonText: {
-    color: '#fff',
-    marginLeft: 8,
+  mainActionButtonText: {
+    color: '#000000', // Black text on gold button
     fontSize: 14,
     fontWeight: 'bold',
+    marginLeft: 5,
   },
-  actionButtonTextBlack: {
-    color: '#343a40',
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: 'bold',
+  loadingIndicator: {
+    marginTop: 50,
+  },
+  listContent: {
+    paddingBottom: 20,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginVertical: 8,
-    padding: 15,
+    backgroundColor: '#1C1C1C', // Dark background for report cards
+    borderRadius: 10,
+    padding: 20,
+    marginBottom: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.8,
+    shadowRadius: 2,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#333333',
   },
   cardDate: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#FFD700', // Gold for card date
     marginBottom: 10,
-    color: '#343a40',
   },
   divider: {
-    height: 1,
-    backgroundColor: '#e9ecef',
+    borderBottomColor: '#444444', // Darker divider
+    borderBottomWidth: 1,
     marginVertical: 10,
   },
   row: {
@@ -1184,198 +1146,268 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   label: {
-    fontSize: 15,
-    color: '#495057',
+    fontSize: 16,
+    color: '#CCCCCC', // Light grey for labels
   },
   value: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
+    color: '#FFFFFF', // Set default value color to white
   },
   notesSection: {
     marginTop: 10,
     paddingLeft: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: '#007bff',
+    borderLeftWidth: 2,
+    borderLeftColor: '#FFD700', // Gold accent for notes
   },
   notesTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
+    color: '#FFD700',
     marginBottom: 5,
-    color: '#495057',
   },
   noteText: {
-    fontSize: 13,
-    color: '#6c757d',
-    marginBottom: 3,
+    fontSize: 14,
+    color: '#AAAAAA', // Slightly lighter grey for notes
   },
-  expenseButton: {
+  // Action buttons specific to the report card
+  cardActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#eaf6ff',
-    padding: 10,
-    borderRadius: 5,
+    backgroundColor: '#333333', // Dark button background
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 10, // Adjusted margin to prevent clash with previous margin
     borderWidth: 1,
-    borderColor: '#007bff',
-    marginTop: 15,
+    borderColor: '#FFD700', // Gold border
   },
-  expenseButtonText: {
-    marginLeft: 8,
-    fontSize: 14,
+  cardActionButtonText: {
+    color: '#FFD700', // Gold text
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#007bff',
+    marginLeft: 8,
   },
-  centeredText: {
+  noDataText: {
+    color: '#CCCCCC',
     textAlign: 'center',
     marginTop: 20,
     fontSize: 16,
-    color: '#6c757d',
   },
-  modalBackground: {
+  // Modals
+  modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Darker overlay
   },
   modalContent: {
+    backgroundColor: '#1C1C1C', // Dark background for modal content
+    borderRadius: 15,
+    padding: 25,
     width: '90%',
-    maxWidth: 400,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 20,
+    maxHeight: '80%',
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 10,
+    borderWidth: 2,
+    borderColor: '#FFD700', // Gold border for modals
   },
   calendarModalContent: {
-    width: '95%',
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: '#1C1C1C',
+    borderRadius: 15,
     padding: 10,
+    width: '95%',
+    maxHeight: '80%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 10,
+    borderWidth: 2,
+    borderColor: '#FFD700',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 20,
+    color: '#FFD700', // Gold title
     textAlign: 'center',
-    color: '#343a40',
-  },
-  modalDate: {
-    fontSize: 16,
-    color: '#6c757d',
-    textAlign: 'center',
-    marginBottom: 15,
   },
   modalInput: {
-    borderWidth: 1,
-    borderColor: '#ced4da',
-    borderRadius: 5,
-    padding: 10,
+    width: '100%',
+    backgroundColor: '#333333', // Dark input background
+    borderRadius: 8,
+    padding: 15,
     marginBottom: 15,
+    color: '#FFFFFF', // White text input
     fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#555555',
   },
-  modalButtonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 10,
+  modalDateText: {
+    fontSize: 16,
+    color: '#CCCCCC',
+    marginBottom: 15,
   },
-  cancelButton: {
-    backgroundColor: '#6c757d',
-    padding: 12,
-    borderRadius: 5,
-    flex: 1,
-    marginRight: 10,
+  // Primary button for modals (e.g., Save, Update)
+  modalPrimaryButton: {
+    backgroundColor: '#FFD700', // Gold button
+    width: '100%',
+    padding: 15,
+    borderRadius: 8,
     alignItems: 'center',
+    marginBottom: 10,
   },
-  cancelButtonText: {
-    color: '#fff',
-    fontSize: 16,
+  modalPrimaryButtonText: {
+    color: '#000000', // Black text
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  saveButton: {
-    backgroundColor: '#007bff',
-    padding: 12,
-    borderRadius: 5,
-    flex: 1,
-    marginLeft: 10,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  closeButton: {
-    marginTop: 20,
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderRadius: 5,
+  // Secondary button for modals (e.g., Cancel, Close)
+  modalSecondaryButton: {
+    backgroundColor: '#333333', // Dark cancel button
+    width: '100%',
+    padding: 15,
+    borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ced4da',
+    borderColor: '#FFD700',
   },
-  closeButtonText: {
-    color: '#343a40',
-    fontSize: 16,
+  modalSecondaryButtonText: {
+    color: '#FFD700', // Gold text
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  modalCloseButton: { // Specific close button for calendar modal
+    backgroundColor: '#333333',
+    width: '100%',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#FFD700',
+  },
+  modalCloseButtonText: {
+    color: '#FFD700',
+    fontSize: 18,
     fontWeight: 'bold',
   },
   expenseListItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    backgroundColor: '#2A2A2A', // Slightly lighter dark for list items
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 10,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#444444',
   },
-  expenseListItemAmount: {
+  expenseListItemText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#dc3545',
-  },
-  expenseListItemNotes: {
-    fontSize: 14,
-    color: '#495057',
+    color: '#FFFFFF', // White text
+    flexShrink: 1,
+    paddingRight: 10,
   },
   expenseListItemActions: {
     flexDirection: 'row',
   },
-  historyItem: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+  historyListItem: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 10,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#444444',
+  },
+  historyListItemDate: {
+    fontSize: 14,
+    color: '#AAAAAA',
     marginBottom: 5,
   },
-  historyItemDate: {
-    fontSize: 14,
-    color: '#6c757d',
-    marginBottom: 2,
-  },
-  historyItemType: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 2,
-    textTransform: 'capitalize',
-  },
-  historyItemAmount: {
+  historyListItemText: {
     fontSize: 16,
+    color: '#FFFFFF',
+    marginBottom: 3,
+  },
+  historyListItemNotes: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    color: '#CCCCCC',
+    marginTop: 5,
+  },
+  // Auth Specific Styles
+  authContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#121212',
+    padding: 20,
+  },
+  authCard: {
+    backgroundColor: '#1C1C1C',
+    borderRadius: 15,
+    padding: 30,
+    width: '90%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 10,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+  },
+  authHeader: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFD700',
+    marginBottom: 10,
+  },
+  authSubtitle: {
+    fontSize: 14,
+    color: '#CCCCCC',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  authInput: {
+    width: '100%',
+    backgroundColor: '#333333',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15,
+    color: '#FFFFFF',
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#555555',
+  },
+  authButton: { // This is the primary button for the auth screen
+    backgroundColor: '#FFD700',
+    width: '100%',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  authButtonText: {
+    color: '#000000',
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  historyItemNewBalance: {
-    fontSize: 15,
-    color: '#343a40',
-    marginTop: 2,
+  forgotButton: {
+    marginTop: 10,
   },
-  historyItemNotes: {
-    fontSize: 13,
-    color: '#495057',
-    fontStyle: 'italic',
-    marginTop: 5,
+  forgotButtonText: {
+    color: '#FFD700',
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 });

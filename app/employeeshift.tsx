@@ -25,8 +25,8 @@ interface IconTextInputProps extends TextInputProps {
 }
 const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => (
   <View style={styles.inputContainer}>
-    <Ionicons name={iconName} size={22} color="#888" style={styles.inputIcon} />
-    <TextInput style={styles.input} {...props} placeholderTextColor="#aaa" />
+    <Ionicons name={iconName} size={22} color="#FFD700" style={styles.inputIcon} /> {/* Gold icon */}
+    <TextInput style={styles.input} {...props} placeholderTextColor="#888" /> {/* Lighter placeholder text */}
   </View>
 );
 
@@ -398,7 +398,7 @@ export default function EmployeeShift() {
   if (!isReady) {
     return (
         <View style={styles.centered}>
-            <ActivityIndicator size="large" color="#007bff" />
+            <ActivityIndicator size="large" color="#FFD700" /> {/* Gold loading indicator */}
         </View>
     );
   }
@@ -408,7 +408,7 @@ export default function EmployeeShift() {
       <View style={styles.headerContainer}>
         <Text style={styles.header}>Shift Control</Text>
         <TouchableOpacity onPress={() => router.push('/')}>
-          <Ionicons name="home-outline" size={28} color="#007bff" />
+          <Ionicons name="home-outline" size={28} color="#FFD700" /> {/* Gold home icon */}
         </TouchableOpacity>
       </View>
 
@@ -418,7 +418,7 @@ export default function EmployeeShift() {
             <Text style={styles.cardTitle}>Start New Shift</Text>
             <IconTextInput iconName="person-circle-outline" placeholder="Enter Employee Name" value={employeeName} onChangeText={setEmployeeName} />
             <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={handleStartShift}>
-              <Ionicons name="play-circle-outline" size={24} color="#fff" />
+              <Ionicons name="play-circle-outline" size={24} color="#000" /> {/* Black icon on gold button */}
               <Text style={styles.buttonText}>Start Shift</Text>
             </TouchableOpacity>
           </>
@@ -426,18 +426,18 @@ export default function EmployeeShift() {
           <>
             <Text style={styles.cardTitle}>Shift Active</Text>
             <View style={styles.activeShiftInfo}>
-              <Ionicons name="time-outline" size={40} color="#ffc107" />
+              <Ionicons name="time-outline" size={40} color="#FFD700" /> {/* Gold icon */}
               <View style={{marginLeft: 15}}>
-                <Text style={styles.activeShiftText}>Employee: <Text style={{fontWeight: 'bold'}}>{employeeName}</Text></Text>
-                <Text style={styles.activeShiftText}>Started at: {startTime ? new Date(startTime).toLocaleTimeString() : ''}</Text>
+                <Text style={styles.activeShiftText}>Employee: <Text style={styles.activeShiftValue}>{employeeName}</Text></Text>
+                <Text style={styles.activeShiftText}>Started at: <Text style={styles.activeShiftValue}>{startTime ? new Date(startTime).toLocaleTimeString() : ''}</Text></Text>
               </View>
             </View>
             <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={handleEndShift}>
-              <Ionicons name="stop-circle-outline" size={24} color="#fff" />
+              <Ionicons name="stop-circle-outline" size={24} color="#000" /> {/* Black icon on gold button */}
               <Text style={styles.buttonText}>End & Finalize Shift</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={handleDiscardShift}>
-              <Ionicons name="trash-bin-outline" size={20} color="#fff" />
+              <Ionicons name="trash-bin-outline" size={20} color="#FFF" /> {/* White icon on red button */}
               <Text style={styles.buttonText}>Discard Shift</Text>
             </TouchableOpacity>
           </>
@@ -446,7 +446,10 @@ export default function EmployeeShift() {
             <Text style={styles.cardTitle}>Finalize Shift for {employeeName}</Text>
             <Text style={styles.subHeader}>Enter Machine Data</Text>
             <View style={styles.addMachineRow}>
-              <IconTextInput iconName="add-circle-outline" placeholder="Machine #" value={newMachine} onChangeText={setNewMachine} onSubmitEditing={addMachine} keyboardType="number-pad" />
+              {/* Adjusted flex for IconTextInput to prevent overflow */}
+              <View style={{flex: 1}}>
+                <IconTextInput iconName="add-circle-outline" placeholder="Machine #" value={newMachine} onChangeText={setNewMachine} onSubmitEditing={addMachine} keyboardType="number-pad" />
+              </View>
               <TouchableOpacity onPress={addMachine} style={styles.addButton}>
                 <Text style={styles.addButtonText}>Add</Text>
               </TouchableOpacity>
@@ -467,15 +470,29 @@ export default function EmployeeShift() {
                 {Object.keys(machineData).sort((a,b) => parseInt(a) - parseInt(b)).map((machine) => (
                   <View key={machine} style={styles.machineRow}>
                     <Text style={[styles.machineCell, styles.machineLabel]}>{machine}</Text>
-                    <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.in || ''} onChangeText={(text) => handleMachineInput(machine, 'in', text)} />
-                    <TextInput placeholder="0" keyboardType="numeric" style={[styles.machineCell, styles.machineInput]} value={machineData[machine]?.out || ''} onChangeText={(text) => handleMachineInput(machine, 'out', text)} />
+                    <TextInput
+                      placeholder="0"
+                      keyboardType="numeric"
+                      style={[styles.machineCell, styles.machineInput]}
+                      value={machineData[machine]?.in || ''}
+                      onChangeText={(text) => handleMachineInput(machine, 'in', text)}
+                      placeholderTextColor="#888" // Lighter placeholder
+                    />
+                    <TextInput
+                      placeholder="0"
+                      keyboardType="numeric"
+                      style={[styles.machineCell, styles.machineInput]}
+                      value={machineData[machine]?.out || ''}
+                      onChangeText={(text) => handleMachineInput(machine, 'out', text)}
+                      placeholderTextColor="#888" // Lighter placeholder
+                    />
 
                     <View style={[styles.machineCell, styles.snapshotColumn]}>
                       <TouchableOpacity
                         style={styles.snapshotButton}
                         onPress={() => handleTakeSnapshot(machine)}
                       >
-                        <Ionicons name="camera-outline" size={20} color="#fff" />
+                        <Ionicons name="camera-outline" size={20} color="#000" /> {/* Black icon on gold button */}
                       </TouchableOpacity>
                       {machineData[machine]?.images.length > 0 && (
                         <Text style={styles.snapshotCount}>{machineData[machine].images.length}/1</Text>
@@ -483,7 +500,7 @@ export default function EmployeeShift() {
                     </View>
 
                     <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteMachine(machine)}>
-                      <Ionicons name="trash-outline" size={22} color="#dc3545" />
+                      <Ionicons name="trash-outline" size={22} color="#FF6347" /> {/* Red icon */}
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -498,19 +515,23 @@ export default function EmployeeShift() {
                 multiline
                 value={shiftNotes}
                 onChangeText={handleNotesInput}
+                placeholderTextColor="#888" // Lighter placeholder
               />
             </View>
 
             <TouchableOpacity style={[styles.button, styles.successButton]} onPress={handleSaveShift} disabled={isSubmitting}>
-              {isSubmitting ? <ActivityIndicator color="#fff"/> :
-                <>
-                  <Ionicons name="save-outline" size={24} color="#fff" />
+              {/* Corrected conditional rendering inside TouchableOpacity */}
+              {isSubmitting ? (
+                <ActivityIndicator color="#000"/>
+              ) : (
+                <View style={{flexDirection: 'row', alignItems: 'center'}}> {/* Added View to hold icon and text */}
+                  <Ionicons name="save-outline" size={24} color="#000" /> {/* Black icon on gold button */}
                   <Text style={styles.buttonText}>Save Shift</Text>
-                </>
-              }
+                </View>
+              )}
             </TouchableOpacity>
             <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={handleDiscardShift}>
-              <Ionicons name="close-circle-outline" size={22} color="#fff" />
+              <Ionicons name="close-circle-outline" size={22} color="#FFF" /> {/* White icon on red button */}
               <Text style={styles.buttonText}>Cancel & Discard</Text>
             </TouchableOpacity>
           </>
@@ -521,49 +542,225 @@ export default function EmployeeShift() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 10, backgroundColor: '#f0f2f5', flexGrow: 1 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10, marginTop: 40 },
-  header: { fontSize: 26, fontWeight: 'bold', color: '#1c1c1e' },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginVertical: 10, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 5 },
-  cardTitle: { fontSize: 22, fontWeight: '600', color: '#333', textAlign: 'center', marginBottom: 24 },
-  inputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, paddingHorizontal: 12 },
-  inputIcon: { marginRight: 10 },
-  input: { flex: 1, height: 55, fontSize: 16, color: '#333' },
-  button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 15, marginTop: 10, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2 },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 10 },
-  primaryButton: { backgroundColor: '#007bff' },
-  warningButton: { backgroundColor: '#ffc107' },
-  successButton: { backgroundColor: '#28a745' },
-  dangerButton: { backgroundColor: '#dc3545', },
-  activeShiftInfo: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff3cd', padding: 20, borderRadius: 12, marginBottom: 20 },
-  activeShiftText: { fontSize: 16, color: '#856404' },
-  subHeader: { fontSize: 18, fontWeight: '600', color: '#495057', marginBottom: 15 },
-  addMachineRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  addButton: { marginLeft: 10, backgroundColor: '#007bff', paddingHorizontal: 20, height: 55, justifyContent: 'center', borderRadius: 12 },
-  addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  machineTable: { borderWidth: 1, borderColor: '#e9ecef', borderRadius: 8, overflow: 'hidden', marginBottom: 20 },
-  machineTableHeader: { flexDirection: 'row', backgroundColor: '#f8f9fa', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
-  machineHeadertext: { fontWeight: 'bold', color: '#495057', padding: 12, flex: 1, },
-  // !!! NEW style for smaller header text, e.g., "Snap" !!!
-  machineHeadertextSmall: { fontWeight: 'bold', color: '#495057', fontSize: 14 },
-  centerHeaderText: { textAlign: 'center' },
+  container: {
+    padding: 10,
+    backgroundColor: '#121212', // Very dark background
+    flexGrow: 1
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#121212', // Very dark background
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    marginTop: 40
+  },
+  header: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#FFD700' // Gold for header
+  },
+  card: {
+    backgroundColor: '#1C1C1C', // Dark background for cards
+    borderRadius: 16,
+    padding: 20,
+    marginVertical: 10,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: '#333333', // Subtle border
+  },
+  cardTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#FFD700', // Gold for card title
+    textAlign: 'center',
+    marginBottom: 24
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2A2A2A', // Darker background for input
+    borderWidth: 1,
+    borderColor: '#555555', // Darker border
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 15, // Added margin for spacing
+  },
+  inputIcon: {
+    marginRight: 10
+  },
+  input: {
+    flex: 1,
+    height: 55,
+    fontSize: 16,
+    color: '#FFFFFF' // White text input
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 15,
+    marginTop: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4, // Slightly less opaque shadow
+  },
+  buttonText: {
+    color: '#000', // Black text for primary/warning/success buttons
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 10
+  },
+  primaryButton: {
+    backgroundColor: '#FFD700' // Gold
+  },
+  warningButton: {
+    backgroundColor: '#FFD700' // Gold for warning
+  },
+  successButton: {
+    backgroundColor: '#4CAF50' // Green for success
+  },
+  dangerButton: {
+    backgroundColor: '#FF6347', // Red for danger
+  },
+  activeShiftInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2A2A2A', // Darker background for active shift info
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#FFD700', // Gold border
+  },
+  activeShiftText: {
+    fontSize: 16,
+    color: '#CCCCCC' // Light grey text
+  },
+  activeShiftValue: { // New style for the dynamic text
+    fontWeight: 'bold',
+    color: '#FFFFFF', // White for the value
+  },
+  subHeader: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFD700', // Gold for sub-headers
+    marginBottom: 15
+  },
+  addMachineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    // No flex: 1 on the row itself
+  },
+  // The IconTextInput now has a wrapper View with flex: 1
+  addButton: {
+    marginLeft: 10,
+    backgroundColor: '#FFD700', // Gold button
+    paddingHorizontal: 20,
+    height: 55,
+    justifyContent: 'center',
+    borderRadius: 12,
+    // Removed fixed width if it was here, allowing content to dictate size
+  },
+  addButtonText: {
+    color: '#000', // Black text
+    fontWeight: 'bold',
+    fontSize: 16
+  },
+  machineTable: {
+    borderWidth: 1,
+    borderColor: '#444444', // Darker border
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 20
+  },
+  machineTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#2A2A2A', // Darker background for table header
+    borderBottomWidth: 1,
+    borderBottomColor: '#555555' // Darker border
+  },
+  machineHeadertext: {
+    fontWeight: 'bold',
+    color: '#FFD700', // Gold for table header text
+    padding: 12,
+    flex: 1,
+  },
+  machineHeadertextSmall: {
+    fontWeight: 'bold',
+    color: '#FFD700', // Gold
+    fontSize: 14
+  },
+  centerHeaderText: {
+    textAlign: 'center'
+  },
 
-  machineRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
-  machineCell: { padding: 12, fontSize: 16, flex: 1 },
-  machineLabel: { fontWeight: '500', color: '#333' },
-  machineInput: { backgroundColor: '#fff', textAlign: 'center', borderLeftWidth: 1, borderLeftColor: '#e9ecef' },
-  deleteButton: { padding: 12, borderLeftWidth: 1, borderLeftColor: '#e9ecef', },
-  deleteButtonHeader: { padding: 12, width: 46, },
-  notesContainer: { marginVertical: 20, },
-  notesInput: { backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, padding: 12, fontSize: 16, textAlignVertical: 'top', height: 100, },
+  machineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#222222' // Even darker border for rows
+  },
+  machineCell: {
+    padding: 12,
+    fontSize: 16,
+    flex: 1,
+    color: '#FFFFFF' // White for machine data
+  },
+  machineLabel: {
+    fontWeight: '500',
+    color: '#CCCCCC' // Light grey for machine label
+  },
+  machineInput: {
+    backgroundColor: '#1C1C1C', // Dark input background
+    textAlign: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: '#333333', // Darker border
+    color: '#FFFFFF', // White text input
+  },
+  deleteButton: {
+    padding: 12,
+    borderLeftWidth: 1,
+    borderLeftColor: '#333333', // Darker border
+  },
+  deleteButtonHeader: {
+    padding: 12,
+    width: 46,
+  },
+  notesContainer: {
+    marginVertical: 20,
+  },
+  notesInput: {
+    backgroundColor: '#2A2A2A', // Darker background for notes input
+    borderWidth: 1,
+    borderColor: '#555555', // Darker border
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+    textAlignVertical: 'top',
+    height: 100,
+    color: '#FFFFFF', // White text input
+  },
 
   headerSnapshotColumn: {
     width: 100,
     justifyContent: 'center',
     alignItems: 'center',
     borderLeftWidth: 1,
-    borderLeftColor: '#e9ecef',
+    borderLeftColor: '#555555', // Darker border
     padding: 12,
   },
   snapshotColumn: {
@@ -572,11 +769,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingHorizontal: 5,
     borderLeftWidth: 1,
-    borderLeftColor: '#e9ecef',
+    borderLeftColor: '#333333', // Darker border
     flex: 1.2,
   },
   snapshotButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: '#FFD700', // Gold button
     borderRadius: 8,
     padding: 8,
     alignItems: 'center',
@@ -584,7 +781,7 @@ const styles = StyleSheet.create({
   },
   snapshotCount: {
     fontSize: 12,
-    color: '#666',
+    color: '#CCCCCC', // Light grey text
     marginLeft: 5,
   },
 });

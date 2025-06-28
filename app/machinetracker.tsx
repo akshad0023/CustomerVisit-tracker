@@ -4,7 +4,6 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-// import ImageViewer from 'react-native-image-zoom-viewer'; // REMOVE THIS IMPORT
 import ImageView from 'react-native-image-viewing'; // ADD THIS IMPORT
 import { auth, db } from '../firebaseConfig';
 
@@ -31,13 +30,42 @@ interface SummaryRowProps {
   iconName?: keyof typeof Ionicons.glyphMap;
 }
 
-const SummaryRow: React.FC<SummaryRowProps> = ({ label, value, valueColor = '#333', isBold = false, iconName }) => (
+const SummaryRow: React.FC<SummaryRowProps> = ({
+  label,
+  value,
+  valueColor = '#FFFFFF',
+  isBold = false,
+  iconName,
+}) => (
   <View style={styles.summaryRow}>
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      {iconName && <Ionicons name={iconName} size={20} color={valueColor || '#333'} style={{ marginRight: 10, width: 22 }} />}
-      <Text style={[styles.summaryLabel, isBold && { fontWeight: 'bold' }]}>{label}</Text>
+      {iconName && (
+        <Ionicons
+          name={iconName}
+          size={20}
+          color={valueColor || '#FFD700'}
+          style={{ marginRight: 10, width: 22 }}
+        />
+      )}
+      <Text
+        style={[
+          styles.summaryLabel,
+          { color: valueColor },
+          isBold && { fontWeight: 'bold' },
+        ]}
+      >
+        {label}
+      </Text>
     </View>
-    <Text style={[styles.summaryValue, { color: valueColor }, isBold && { fontWeight: 'bold' }]}>{value}</Text>
+    <Text
+      style={[
+        styles.summaryValue,
+        { color: valueColor },
+        isBold && { fontWeight: 'bold' },
+      ]}
+    >
+      {value}
+    </Text>
   </View>
 );
 
@@ -147,7 +175,7 @@ export default function MachineTracker() {
   if (!isReady || loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007bff" />
+        <ActivityIndicator size="large" color="#FFD700" />
         <Text style={styles.loadingText}>Loading Shift History...</Text>
       </View>
     );
@@ -155,7 +183,7 @@ export default function MachineTracker() {
 
   const renderShiftCard = ({ item }: { item: Shift }) => {
     const businessProfit = (item.totalIn || 0) - (item.totalOut || 0);
-    const resultColor = businessProfit >= 0 ? '#28a745' : '#dc3545';
+    const resultColor = businessProfit >= 0 ? '#4CAF50' : '#FF6347'; // Green for profit, Red for loss
     const profitLabel = businessProfit >= 0 ? 'Profit' : 'Loss';
 
     return (
@@ -199,7 +227,7 @@ export default function MachineTracker() {
                       onPress={() => openImageModal([...item.machines[machine].images!], machine, 0)}
                       style={styles.viewSnapshotsButton}
                     >
-                      <Ionicons name="images-outline" size={20} color="#007bff" />
+                      <Ionicons name="images-outline" size={20} color="#FFD700" /> {/* Gold icon */}
                       <Text style={styles.viewSnapshotsText}>({item.machines[machine].images!.length})</Text>
                     </TouchableOpacity>
                   ) : (
@@ -212,9 +240,9 @@ export default function MachineTracker() {
         )}
         <View style={styles.divider} />
         <View style={styles.summaryContainer}>
-          <SummaryRow label="Total In:" value={`$${(item.totalIn || 0).toFixed(2)}`} iconName="arrow-down-circle-outline" valueColor="#28a745" />
-          <SummaryRow label="Total Out:" value={`$${(item.totalOut || 0).toFixed(2)}`} iconName="arrow-up-circle-outline" valueColor="#dc3545" />
-          <SummaryRow label="Matched Amount:" value={`$${(item.totalMatchedAmount || 0).toFixed(2)}`} iconName="gift-outline" valueColor="#6f42c1" />
+          <SummaryRow label="Total In:" value={`$${(item.totalIn || 0).toFixed(2)}`} iconName="arrow-down-circle-outline" valueColor="#4CAF50" /> {/* Green */}
+          <SummaryRow label="Total Out:" value={`$${(item.totalOut || 0).toFixed(2)}`} iconName="arrow-up-circle-outline" valueColor="#FF6347" /> {/* Red */}
+          <SummaryRow label="Matched Amount:" value={`$${(item.totalMatchedAmount || 0).toFixed(2)}`} iconName="gift-outline" valueColor="#FFD700" /> {/* Gold */}
           <View style={styles.divider} />
           <SummaryRow label={`${profitLabel}:`} value={`$${Math.abs(businessProfit).toFixed(2)}`} valueColor={resultColor} isBold={true} iconName={businessProfit >= 0 ? "trending-up-outline" : "trending-down-outline"} />
         </View>
@@ -222,42 +250,46 @@ export default function MachineTracker() {
           onPress={() => {
             const printContent = `
     <html>
-      <body style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Shift Report - ${item.employeeName}</h2>
-        <p><strong>Shift ID:</strong> ${item.id}</p>
-        <p><strong>Start Time:</strong> ${item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</p>
-        <p><strong>End Time:</strong> ${item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}</p>
+      <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #121212; color: #FFFFFF;">
+        <h2 style="color: #FFD700;">Shift Report - ${item.employeeName}</h2>
+        <p><strong>Shift ID:</strong> <span style="color: #CCCCCC;">${item.id}</span></p>
+        <p><strong>Start Time:</strong> <span style="color: #CCCCCC;">${item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</span></p>
+        <p><strong>End Time:</strong> <span style="color: #CCCCCC;">${item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}</span></p>
 
-        ${item.notes ? `<p><strong>Shift Notes:</strong> ${item.notes}</p>` : ''}
+        ${item.notes ? `<p><strong style="color: #FFD700;">Shift Notes:</strong> <span style="color: #CCCCCC; font-style: italic;">${item.notes}</span></p>` : ''}
 
-        <h3>Machine Details:</h3>
-        <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <th style="text-align: left; border-bottom: 1px solid #ccc; padding: 8px;">Machine</th>
-            <th style="text-align: right; border-bottom: 1px solid #ccc; padding: 8px;">In ($)</th>
-            <th style="text-align: right; border-bottom: 1px solid #ccc; padding: 8px;">Out ($)</th>
-            <th style="text-align: center; border-bottom: 1px solid #ccc; padding: 8px;">Snapshots</th>
-          </tr>
+        <h3 style="color: #FFD700;">Machine Details:</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; background-color: #1C1C1C; border: 1px solid #333333;">
+          <thead>
+            <tr style="background-color: #333333;">
+              <th style="text-align: left; border-bottom: 1px solid #555555; padding: 10px; color: #FFD700;">Machine</th>
+              <th style="text-align: right; border-bottom: 1px solid #555555; padding: 10px; color: #FFD700;">In ($)</th>
+              <th style="text-align: right; border-bottom: 1px solid #555555; padding: 10px; color: #FFD700;">Out ($)</th>
+              <th style="text-align: center; border-bottom: 1px solid #555555; padding: 10px; color: #FFD700;">Snapshots</th>
+            </tr>
+          </thead>
+          <tbody>
           ${Object.keys(item.machines || {})
             .sort((a, b) => parseInt(a) - parseInt(b))
             .map(machine => {
               const m = item.machines[machine];
               return `
                 <tr>
-                  <td style="padding: 8px;">${machine}</td>
-                  <td style="text-align: right; padding: 8px;">$${m.in.toFixed(2)}</td>
-                  <td style="text-align: right; padding: 8px;">$${m.out.toFixed(2)}</td>
-                  <td style="text-align: center; padding: 8px;">${m.images && m.images.length > 0 ? `${m.images.length} photo(s)` : 'N/A'}</td>
+                  <td style="padding: 10px; color: #FFFFFF; border-bottom: 1px solid #222222;">${machine}</td>
+                  <td style="text-align: right; padding: 10px; color: #FFFFFF; border-bottom: 1px solid #222222;">$${m.in.toFixed(2)}</td>
+                  <td style="text-align: right; padding: 10px; color: #FFFFFF; border-bottom: 1px solid #222222;">$${m.out.toFixed(2)}</td>
+                  <td style="text-align: center; padding: 10px; color: #FFFFFF; border-bottom: 1px solid #222222;">${m.images && m.images.length > 0 ? `${m.images.length} photo(s)` : 'N/A'}</td>
                 </tr>
               `;
             }).join('')}
+          </tbody>
         </table>
 
-        <h3>Summary</h3>
-        <p><strong>Total In:</strong> $${(item.totalIn || 0).toFixed(2)}</p>
-        <p><strong>Total Out:</strong> $${(item.totalOut || 0).toFixed(2)}</p>
-        <p><strong>Matched Amount:</strong> $${(item.totalMatchedAmount || 0).toFixed(2)}</p>
-        <p><strong>${profitLabel}:</strong> $${Math.abs(businessProfit).toFixed(2)}</p>
+        <h3 style="color: #FFD700; margin-top: 20px;">Summary</h3>
+        <p><strong>Total In:</strong> <span style="color: #4CAF50;">$${(item.totalIn || 0).toFixed(2)}</span></p>
+        <p><strong>Total Out:</strong> <span style="color: #FF6347;">$${(item.totalOut || 0).toFixed(2)}</span></p>
+        <p><strong>Matched Amount:</strong> <span style="color: #FFD700;">$${(item.totalMatchedAmount || 0).toFixed(2)}</span></p>
+        <p><strong>${profitLabel}:</strong> <span style="color: ${resultColor}; font-weight: bold;">$${Math.abs(businessProfit).toFixed(2)}</span></p>
       </body>
     </html>
   `;
@@ -265,9 +297,9 @@ export default function MachineTracker() {
               printAsync({ html: printContent })
             );
           }}
-          style={{ marginTop: 10, backgroundColor: '#007bff', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+          style={styles.printButton}
         >
-          <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Print Shift Summary</Text>
+          <Text style={styles.printButtonText}>Print Shift Summary</Text>
         </TouchableOpacity>
       </View>
     );
@@ -278,7 +310,7 @@ export default function MachineTracker() {
       <View style={styles.headerContainer}>
         <Text style={styles.header}>Shift History</Text>
         <TouchableOpacity onPress={() => router.push('/')}>
-          <Ionicons name="home-outline" size={28} color="#007bff" />
+          <Ionicons name="home-outline" size={28} color="#FFD700" />
         </TouchableOpacity>
       </View>
 
@@ -289,7 +321,7 @@ export default function MachineTracker() {
         contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
         ListEmptyComponent={
           <View style={styles.centered}>
-            <Text style={styles.loadingText}>No shift history found.</Text>
+            <Text style={styles.noDataText}>No shift history found.</Text>
           </View>
         }
       />
@@ -315,89 +347,169 @@ export default function MachineTracker() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5', paddingTop: 10, },
-  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10, marginTop: 40, },
-  header: { fontSize: 26, fontWeight: 'bold', color: '#1c1c1e', },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, },
-  loadingText: { marginTop: 10, fontSize: 18, color: 'gray', },
-  card: { backgroundColor: '#fff', padding: 16, marginHorizontal: 10, marginVertical: 8, borderRadius: 12, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, },
-  cardHeader: { marginBottom: 12, },
-  employeeName: { fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: '#111', },
-  timeText: { fontSize: 14, color: '#666', },
-  divider: { height: 1, backgroundColor: '#e9ecef', marginVertical: 12, },
-  notesSection: { backgroundColor: '#f8f9fa', padding: 10, borderRadius: 8, },
-  notesTitle: { fontSize: 14, fontWeight: '600', color: '#495057', marginBottom: 5, },
-  notesText: { fontSize: 14, color: '#343a40', fontStyle: 'italic', },
-  machineSection: { marginVertical: 5, },
-  machineTableHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#dee2e6', },
-  tableHeaderText: { fontSize: 14, fontWeight: '600', color: '#495057', },
-  machineTableRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, },
-  machineTableCell: { flex: 1, fontSize: 16, color: '#333', paddingRight: 5 },
-  summaryContainer: { marginTop: 12, },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, },
-  summaryLabel: { fontSize: 16, color: '#495057', },
-  summaryValue: { fontSize: 16, fontWeight: '500', },
+  container: {
+    flex: 1,
+    backgroundColor: '#121212', // Very dark background
+    paddingTop: 10,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    marginTop: 40,
+  },
+  header: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#FFD700', // Gold for header
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 50,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 18,
+    color: '#CCCCCC', // Light grey for loading text
+  },
+  card: {
+    backgroundColor: '#1C1C1C', // Dark background for cards
+    padding: 16,
+    marginHorizontal: 10,
+    marginVertical: 8,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: '#333333', // Subtle border
+  },
+  cardHeader: {
+    marginBottom: 12,
+  },
+  employeeName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#FFD700', // Gold for employee name
+  },
+  timeText: {
+    fontSize: 14,
+    color: '#CCCCCC', // Light grey for time text
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#444444', // Darker divider
+    marginVertical: 12,
+  },
+  notesSection: {
+    backgroundColor: '#2A2A2A', // Slightly lighter dark for notes section
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FFD700', // Gold border for notes
+  },
+  notesTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFD700', // Gold for notes title
+    marginBottom: 5,
+  },
+  notesText: {
+    fontSize: 14,
+    color: '#AAAAAA', // Slightly lighter grey for notes text
+    fontStyle: 'italic',
+  },
+  machineSection: {
+    marginVertical: 5,
+  },
+  machineTableHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#555555', // Darker border
+  },
+  tableHeaderText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFD700', // Gold for table headers
+  },
+  machineTableRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  machineTableCell: {
+    flex: 1,
+    fontSize: 16,
+    color: '#FFFFFF', // White for machine data
+    paddingRight: 5
+  },
+  summaryContainer: {
+    marginTop: 12,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  summaryLabel: {
+    fontSize: 16,
+    color: '#CCCCCC', // Light grey for summary labels
+  },
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#FFFFFF', // Default white for summary values (overridden by specific colors)
+  },
 
   viewSnapshotsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e6f0ff',
+    backgroundColor: '#333333', // Dark button background
     borderRadius: 5,
     paddingVertical: 5,
     paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#FFD700', // Gold border
   },
   viewSnapshotsText: {
     marginLeft: 5,
     fontSize: 12,
-    color: '#007bff',
+    color: '#FFD700', // Gold text
     fontWeight: 'bold',
   },
   noSnapshotsText: {
     fontSize: 12,
-    color: '#888',
+    color: '#888888', // Darker grey for N/A
     fontStyle: 'italic',
   },
-
-  modalOverlay: { // Keeping these styles in case you want to use a custom Modal wrapper later
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: { // Not directly used by ImageView, but good to keep if you had fallback UI
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    width: '90%',
-    maxHeight: '80%',
-  },
-  modalTitle: { // Not directly used by ImageView
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
-    color: '#333',
-  },
-  noImagesInModalText: { // Not directly used by ImageView
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    paddingVertical: 20,
-  },
-  closeModalButton: { // Not directly used by ImageView
-    backgroundColor: '#007bff',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
+  printButton: {
     marginTop: 10,
+    backgroundColor: '#FFD700', // Gold button
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
   },
-  closeModalButtonText: { // Not directly used by ImageView
-    color: '#fff',
+  printButtonText: {
+    color: '#000000', // Black text on gold button
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
-  // Removed closeButtonOverlay, imageViewerIndicator, navButton styles
-  // as ImageView handles its own UI.
+  noDataText: {
+    color: '#CCCCCC', // Light grey for no data text
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
+  },
   footerContainer: { // Added for ImageView's FooterComponent
     height: 80,
     width: '100%',

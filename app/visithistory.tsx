@@ -33,11 +33,8 @@ interface Visit {
   lastUsed: string;
   matchAmount?: number;
   machineNumber?: string;
-  // --- REVERTED: Original fields for Match Amount Photos ---
-  payoutSnapshotUrl?: string; // Used for match amount photos as per original code
-  customerPayoutProofPhotoUrl?: string; // Also used for match amount photos as per original code
-
-  // --- NEW: Separate field for Payout Photo (from uploadpayoutphoto.tsx) ---
+  payoutSnapshotUrl?: string;
+  customerPayoutProofPhotoUrl?: string;
   payoutPhotoUrl?: string;
 }
 
@@ -46,8 +43,8 @@ interface IconTextInputProps extends TextInputProps {
 }
 const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => (
   <View style={styles.searchContainer}>
-    <Ionicons name={iconName} size={20} color="#888" style={styles.searchIcon} />
-    <TextInput style={styles.searchInput} {...props} placeholderTextColor="#aaa" />
+    <Ionicons name={iconName} size={20} color="#FFD700" style={styles.searchIcon} /> {/* Gold icon */}
+    <TextInput style={styles.searchInput} {...props} placeholderTextColor="#888" /> {/* Lighter placeholder text */}
   </View>
 );
 
@@ -102,10 +99,8 @@ const VisitHistoryScreen = () => {
               lastUsed: v.lastUsed || '',
               matchAmount: typeof v.matchAmount === 'number' ? v.matchAmount : 0,
               machineNumber: v.machineNumber || '',
-              // --- FETCHING ORIGINAL MATCH PHOTO FIELDS ---
-              payoutSnapshotUrl: v.payoutSnapshotUrl || '', // Original field for match photos
-              customerPayoutProofPhotoUrl: v.customerPayoutProofPhotoUrl || '', // Original field for match photos
-              // --- FETCHING NEW PAYOUT PHOTO FIELD ---
+              payoutSnapshotUrl: v.payoutSnapshotUrl || '',
+              customerPayoutProofPhotoUrl: v.customerPayoutProofPhotoUrl || '',
               payoutPhotoUrl: v.payoutPhotoUrl || '',
             };
           });
@@ -141,36 +136,35 @@ const VisitHistoryScreen = () => {
     setFullScreenImageLoading(true);
   };
 
-  const renderItem = ({ item }: { item: Visit }) => {
-    // Determine which URL to use for the original "match amount photo" logic
+const renderItem = ({ item }: { item: Visit }) => (
+  (() => {
     const matchPhotoUrl = item.payoutSnapshotUrl || item.customerPayoutProofPhotoUrl;
-
     return (
       <View style={styles.card}>
         {/* Basic Customer Info */}
         <View style={styles.infoRow}>
-          <Ionicons name="person-circle-outline" size={24} color="#333" style={styles.icon} />
+          <Ionicons name="person-circle-outline" size={24} color="#FFD700" style={styles.icon} /> {/* Gold icon */}
           <Text style={styles.name}>{item.name}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Ionicons name="call-outline" size={20} color="#555" style={styles.icon} />
+          <Ionicons name="call-outline" size={20} color="#FFD700" style={styles.icon} /> {/* Gold icon */}
           <Text style={styles.detailText}>{item.phone}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Ionicons name="calendar-outline" size={20} color="#555" style={styles.icon} />
+          <Ionicons name="calendar-outline" size={20} color="#FFD700" style={styles.icon} /> {/* Gold icon */}
           <Text style={styles.detailText}>Visited on: {item.lastUsed}</Text>
         </View>
         {item.matchAmount !== undefined && item.matchAmount > 0 ? (
           <View style={styles.infoRow}>
-            <Ionicons name="cash-outline" size={20} color="#28a745" style={styles.icon} />
-            <Text style={[styles.detailText, { color: '#28a745', fontWeight: '600' }]}>
+            <Ionicons name="cash-outline" size={20} color="#4CAF50" style={styles.icon} /> {/* Green for cash */}
+            <Text style={[styles.detailText, { color: '#4CAF50', fontWeight: '600' }]}>
               Amount Matched: ${item.matchAmount.toFixed(2)}
             </Text>
           </View>
         ) : null}
         {item.machineNumber ? (
           <View style={styles.infoRow}>
-            <Ionicons name="game-controller-outline" size={20} color="#555" style={styles.icon} />
+            <Ionicons name="game-controller-outline" size={20} color="#FFD700" style={styles.icon} /> {/* Gold icon */}
             <Text style={styles.detailText}>
               On Machine: #{item.machineNumber}
             </Text>
@@ -180,27 +174,25 @@ const VisitHistoryScreen = () => {
         {/* Divider for Photo Sections */}
         <View style={styles.sectionDivider} />
 
-        {/* Match Amount Photo Section (Restored to original logic) */}
+        {/* Match Amount Photo Section */}
         <Text style={styles.sectionHeader}>Match Photo</Text>
-        {matchPhotoUrl ? ( // Checks for either of the original fields
+        {matchPhotoUrl ? (
           <TouchableOpacity
             style={[styles.actionButton, styles.viewMatchPhotoButton]}
             onPress={() => handleViewPhoto(matchPhotoUrl!)}
             accessibilityLabel="View Match Amount Photo"
             accessibilityRole="button"
           >
-            <Ionicons name="image-outline" size={20} color="#28a745" style={styles.icon} />
-            <Text style={[styles.actionButtonText, { color: '#28a745' }]}>View Match Photo</Text>
+            <Ionicons name="image-outline" size={20} color="#000" style={styles.icon} /> {/* Black icon */}
+            <Text style={[styles.actionButtonText, { color: '#000' }]}>View Match Photo</Text>
           </TouchableOpacity>
         ) : (
-          // Show this indicator if a match amount exists but no photo is found in original fields
           item.matchAmount && item.matchAmount > 0 ? (
             <View style={styles.noPhotoButton}>
-              <Ionicons name="alert-circle-outline" size={20} color="#ffc107" style={styles.icon} />
+              <Ionicons name="alert-circle-outline" size={20} color="#FFD700" style={styles.icon} /> {/* Gold alert icon */}
               <Text style={styles.noPhotoButtonText}>No Match Photo Recorded</Text>
             </View>
           ) : (
-            // Only show general info if no match amount at all
             <Text style={styles.noPhotoInfoText}>No match photo needed or recorded.</Text>
           )
         )}
@@ -208,7 +200,7 @@ const VisitHistoryScreen = () => {
         {/* Divider for Payout Photo Section */}
         <View style={styles.sectionDivider} />
 
-        {/* Payout Photo Section (Uses new payoutPhotoUrl field) */}
+        {/* Payout Photo Section */}
         <Text style={styles.sectionHeader}>Payout Photo</Text>
         {item.payoutPhotoUrl ? (
           <TouchableOpacity
@@ -217,7 +209,7 @@ const VisitHistoryScreen = () => {
             accessibilityLabel="View Payout Photo"
             accessibilityRole="button"
           >
-            <Ionicons name="image-outline" size={20} color="#007bff" style={styles.icon} />
+            <Ionicons name="image-outline" size={20} color="#000" style={styles.icon} /> {/* Black icon */}
             <Text style={styles.actionButtonText}>View Payout Photo</Text>
           </TouchableOpacity>
         ) : (
@@ -227,18 +219,19 @@ const VisitHistoryScreen = () => {
             accessibilityLabel="Upload Payout Photo"
             accessibilityRole="button"
           >
-            <Ionicons name="camera-outline" size={20} color="#dc3545" style={styles.icon} />
-            <Text style={[styles.actionButtonText, { color: '#dc3545' }]}>Upload Payout Photo</Text>
+            <Ionicons name="camera-outline" size={20} color="#FFF" style={styles.icon} /> {/* White icon */}
+            <Text style={[styles.actionButtonText, { color: '#FFF' }]}>Upload Payout Photo</Text>
           </TouchableOpacity>
         )}
       </View>
     );
-  };
+  })()
+);
 
   if (!isReady || loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007bff" />
+        <ActivityIndicator size="large" color="#FFD700" /> {/* Gold loading indicator */}
         <Text style={styles.loadingText}>Loading Today's Visits...</Text>
       </View>
     );
@@ -247,9 +240,9 @@ const VisitHistoryScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerContainer}>
-        <Text style={styles.header}>CMT<Text style={styles.headerNormal}> | Today's Visits</Text></Text>
+        <Text style={styles.header}>Today's Visits</Text>
         <TouchableOpacity onPress={() => router.push('/')} accessibilityLabel="Go to Home" accessibilityRole="button">
-          <Ionicons name="home-outline" size={28} color="#007bff" />
+          <Ionicons name="home-outline" size={28} color="#FFD700" /> {/* Gold home icon */}
         </TouchableOpacity>
       </View>
 
@@ -300,21 +293,23 @@ const VisitHistoryScreen = () => {
             <View style={{ width: 28 }} />
           </View>
           <View style={styles.fullScreenImageContainer}>
-            {fullScreenImageLoading && (
-              <ActivityIndicator size="large" color="#007bff" style={StyleSheet.absoluteFill} />
-            )}
             {fullScreenPhotoUrl ? (
-              <Image
-                source={{ uri: fullScreenPhotoUrl }}
-                style={styles.fullScreenImage}
-                resizeMode="contain"
-                onLoadEnd={() => setFullScreenImageLoading(false)}
-                onError={() => {
-                  setFullScreenImageLoading(false);
-                  Alert.alert('Image Load Error', 'Could not load the image. It might be unavailable or corrupt. Check your Firebase Storage rules and the console for the URL.');
-                  console.error("Failed to load image URL:", fullScreenPhotoUrl);
-                }}
-              />
+              <>
+                {fullScreenImageLoading && (
+                  <ActivityIndicator size="large" color="#FFD700" style={styles.imageLoadingIndicator} />
+                )}
+                <Image
+                  source={{ uri: fullScreenPhotoUrl }}
+                  style={styles.fullScreenImage}
+                  resizeMode="contain"
+                  onLoadEnd={() => setFullScreenImageLoading(false)}
+                  onError={() => {
+                    setFullScreenImageLoading(false);
+                    Alert.alert('Image Load Error', 'Could not load the image. It might be unavailable or corrupt. Check your Firebase Storage rules and the console for the URL.');
+                    console.error("Failed to load image URL:", fullScreenPhotoUrl);
+                  }}
+                />
+              </>
             ) : (
               <Text style={styles.fullScreenErrorText}>No image URL provided.</Text>
             )}
@@ -326,35 +321,124 @@ const VisitHistoryScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 10, backgroundColor: '#f0f2f5', },
-  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, marginTop: 10, },
+  container: {
+    flex: 1,
+    paddingTop: 10,
+    backgroundColor: '#121212', // Very dark background
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 15,
+    marginTop: -30, // Increased margin for status bar/notch
+  },
   header: {
     fontSize: 26,
     fontWeight: 'bold',
-    color: '#007bff',
+    color: '#FFD700', // Gold for header
   },
-  headerNormal: {
-    fontWeight: '300',
-    color: '#1c1c1e',
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2A2A2A', // Darker background for search input
+    borderWidth: 1,
+    borderColor: '#555555', // Darker border
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, },
-  searchIcon: { marginRight: 10, },
-  searchInput: { flex: 1, height: 50, fontSize: 16, color: '#333', },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, },
-  loadingText: { marginTop: 10, fontSize: 18, color: 'gray', textAlign: 'center', },
-  card: { padding: 20, backgroundColor: '#fff', borderRadius: 12, marginVertical: 8, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, },
-  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, },
-  icon: { marginRight: 15, width: 24, textAlign: 'center', },
-  name: { fontSize: 20, fontWeight: 'bold', color: '#1c1c1e', },
-  detailText: { fontSize: 16, color: '#333', },
-  divider: { height: 1, backgroundColor: '#e9ecef', marginVertical: 8, },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: 50,
+    fontSize: 16,
+    color: '#FFFFFF', // White text input
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 50,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 18,
+    color: '#CCCCCC', // Light grey for loading text
+    textAlign: 'center',
+  },
+  card: {
+    padding: 20,
+    backgroundColor: '#1C1C1C', // Dark background for cards
+    borderRadius: 12,
+    marginVertical: 8,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: '#333333', // Subtle border
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  icon: {
+    marginRight: 15,
+    width: 24,
+    textAlign: 'center',
+  },
+  name: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFD700', // Gold for customer name
+  },
+  detailText: {
+    fontSize: 16,
+    color: '#CCCCCC', // Light grey for detail text
+  },
 
   // --- Styles for sections and buttons ---
-  sectionDivider: { height: 1, backgroundColor: '#e9ecef', marginVertical: 15, },
-  sectionHeader: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 10, alignSelf: 'center' },
-  noPhotoButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, marginBottom: 5, },
-  noPhotoButtonText: { fontSize: 14, color: '#888', marginLeft: 8, },
-  noPhotoInfoText: { fontSize: 14, color: '#888', textAlign: 'center', marginTop: 5, marginBottom: 5, },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: '#444444', // Darker divider
+    marginVertical: 15,
+  },
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFD700', // Gold for section header
+    marginBottom: 10,
+    alignSelf: 'center',
+  },
+  noPhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    marginBottom: 5,
+  },
+  noPhotoButtonText: {
+    fontSize: 14,
+    color: '#888', // Consistent gray for info
+    marginLeft: 8,
+  },
+  noPhotoInfoText: {
+    fontSize: 14,
+    color: '#888', // Consistent gray for info
+    textAlign: 'center',
+    marginTop: 5,
+    marginBottom: 5,
+  },
 
   actionButton: {
     flexDirection: 'row',
@@ -375,16 +459,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+    color: '#000', // Default black for buttons on gold/light backgrounds
   },
   viewMatchPhotoButton: {
-    backgroundColor: '#e6ffe6', // Light green for match photo
+    backgroundColor: '#FFD700', // Gold for match photo view
   },
   viewPayoutButton: {
-    backgroundColor: '#e0f2f7', // Light blue for payout photo view
+    backgroundColor: '#FFD700', // Gold for payout photo view
   },
   uploadPayoutButton: {
-    backgroundColor: '#fff3f3', // Very light red for upload
-    borderColor: '#dc3545',
+    backgroundColor: '#FF6347', // Red for upload button
+    borderColor: '#FF6347',
     borderWidth: 1,
   },
 
@@ -429,6 +514,17 @@ const styles = StyleSheet.create({
   fullScreenErrorText: {
     color: '#fff',
     fontSize: 16,
+  },
+  imageLoadingIndicator: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
 });
 

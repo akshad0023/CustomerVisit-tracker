@@ -1,6 +1,8 @@
+// All imports stay the same
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -13,6 +15,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image,
   Keyboard,
   ScrollView,
   StyleSheet,
@@ -24,8 +27,31 @@ import {
   View,
 } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+const LionLogo = require('../assets/images/Logo1.png');
 
 const { width } = Dimensions.get('window');
+
+// --- Casino App UI Colors ---
+const CasinoColors = {
+  background: 'black',
+  cardBackground: '#1E1E2A',
+  primaryText: '#FFFFFF',
+  secondaryText: '#BBBBBB',
+  accentGold: '#FFD700',
+  accentRed: '#FF3366',
+  accentGreen: '#33FF66',
+  accentBlue: '#00CCFF',
+  inputBackground: '#2A2A3E',
+  inputBorder: '#555566',
+  buttonPrimaryBg: '#FFD700',
+  buttonPrimaryText: '#1A1A2A',
+  buttonSecondaryBg: '#4A4A5A',
+  buttonSecondaryText: '#FFFFFF',
+  buttonDangerBg: '#CC0000',
+  buttonDangerText: '#FFFFFF',
+  shadowColor: '#000000',
+  divider: '#404050',
+};
 
 interface IconTextInputProps extends TextInputProps {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -34,17 +60,16 @@ interface IconTextInputProps extends TextInputProps {
 const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, ...props }) => (
   <View style={styles.inputContainer}>
     <View style={styles.iconWrapper}>
-      <Ionicons name={iconName} size={20} color="#6B7280" />
+      <Ionicons name={iconName} size={20} color={CasinoColors.secondaryText} />
     </View>
-    <TextInput 
-      style={styles.input} 
-      {...props} 
-      placeholderTextColor="#9CA3AF" 
+    <TextInput
+      style={styles.input}
+      {...props}
+      placeholderTextColor={CasinoColors.secondaryText}
     />
   </View>
 );
 
-// Regex for password complexity: at least 6 characters, at least one letter, one number, one special character
 const passwordComplexityRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/;
 
 export default function OwnerScreen() {
@@ -59,7 +84,7 @@ export default function OwnerScreen() {
       Alert.alert('Validation Error', 'Both Email and Password are required.');
       return;
     }
-    
+
     if (!passwordComplexityRegex.test(password)) {
       Alert.alert(
         'Weak Password',
@@ -111,7 +136,7 @@ export default function OwnerScreen() {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
       await user.reload();
-      
+
       if (!user.emailVerified) {
         Alert.alert(
           "Email Not Verified",
@@ -150,7 +175,7 @@ export default function OwnerScreen() {
             "Your main password has changed. You will be asked to create a new reporting password when you visit the Profit & Loss screen."
           );
         }
-        
+
         await AsyncStorage.setItem('ownerPassword', password);
         Alert.alert('Welcome Back!', `Successfully logged in.`);
         router.replace('/');
@@ -182,32 +207,24 @@ export default function OwnerScreen() {
         Alert.alert("Error", "Could not send reset email. Make sure the email is correct and try again.");
       });
   };
-  
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View style={styles.container}>
-        {/* Background Gradient Effect */}
-        <View style={styles.backgroundGradient} />
-        
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
         >
-          {/* Header Section */}
           <View style={styles.headerSection}>
             <View style={styles.logoContainer}>
-              <View style={styles.logoInner}>
-                <Text style={styles.logoText}>CMT</Text>
-              </View>
+              <Image source={LionLogo} style={styles.logoImage} resizeMode="contain" />
             </View>
-            
             <Text style={styles.title}>Admin Portal</Text>
             <Text style={styles.subtitle}>
               {isRegistering ? 'Create your admin account' : 'Welcome back, admin'}
             </Text>
           </View>
 
-          {/* Form Card */}
           <View style={styles.formCard}>
             <View style={styles.formHeader}>
               <TouchableOpacity
@@ -238,7 +255,6 @@ export default function OwnerScreen() {
                 keyboardType="email-address"
                 autoComplete="email"
               />
-              
               <IconTextInput
                 iconName="lock-closed-outline"
                 placeholder="Enter your password"
@@ -260,18 +276,18 @@ export default function OwnerScreen() {
                 disabled={isLoading}
               >
                 {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <ActivityIndicator color={CasinoColors.buttonPrimaryText} size="small" />
                 ) : (
-                  <>
-                    <Ionicons 
-                      name={isRegistering ? "person-add-outline" : "log-in-outline"} 
-                      size={20} 
-                      color="#FFFFFF" 
+                  <View style={styles.primaryButtonContent}>
+                    <Ionicons
+                      name={isRegistering ? "person-add-outline" : "log-in-outline"}
+                      size={20}
+                      color={CasinoColors.buttonPrimaryText}
                     />
                     <Text style={styles.primaryButtonText}>
                       {isRegistering ? 'Create Account' : 'Sign In'}
                     </Text>
-                  </>
+                  </View>
                 )}
               </TouchableOpacity>
 
@@ -282,195 +298,89 @@ export default function OwnerScreen() {
                     • At least 6 characters long{'\n'}
                     • Include at least one letter{'\n'}
                     • Include at least one number{'\n'}
-                    • Include at least one special character (@$!%*?&)
+                    • Include at least one special character (@$!%*?&){'\n'}
                   </Text>
                 </View>
               )}
             </View>
           </View>
 
-          {/* Footer */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>
-              Secure admin access powered by CMT
+              Secure admin access powered by GMT
             </Text>
           </View>
         </ScrollView>
+        <StatusBar style="light" />
       </View>
     </TouchableWithoutFeedback>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  backgroundGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 300,
-    backgroundColor: '#3B82F6',
-    opacity: 0.05,
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 120,
-    paddingBottom: 40,
-  },
-  headerSection: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoContainer: {
-    marginBottom: 24,
-  },
-  logoInner: {
-    width: 80,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#E6E8F0',
-    justifyContent: 'center',
-    alignItems: 'center',
+  container: { flex: 1, backgroundColor: CasinoColors.background },
+  scrollContainer: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 120, paddingBottom: 40 },
+  headerSection: { alignItems: 'center', marginBottom: 40 },
+  logoContainer: { marginBottom: 24 },
+  logoImage: {
+    width: 120,
+    height: 120,
     alignSelf: 'center',
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: CasinoColors.accentGold,
+    shadowColor: CasinoColors.accentGold,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 10,
+    marginTop: 10,
+    marginBottom: 10,
   },
-  logoText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-    color: '#5B7FE8',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
+  title: { fontSize: 32, fontWeight: 'bold', color: CasinoColors.primaryText, marginBottom: 8, textAlign: 'center' },
+  subtitle: { fontSize: 16, color: CasinoColors.secondaryText, textAlign: 'center', lineHeight: 24 },
   formCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
-    shadowRadius: 24,
-    elevation: 12,
-    overflow: 'hidden',
+    backgroundColor: CasinoColors.cardBackground, borderRadius: 24,
+    shadowColor: CasinoColors.shadowColor, shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3, shadowRadius: 24, elevation: 12,
+    overflow: 'hidden', borderWidth: 1, borderColor: CasinoColors.divider,
   },
   formHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#F9FAFB',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    flexDirection: 'row', backgroundColor: CasinoColors.inputBackground,
+    borderBottomWidth: 1, borderBottomColor: CasinoColors.divider,
   },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
+  tabButton: { flex: 1, paddingVertical: 16, alignItems: 'center' },
   activeTab: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 2,
-    borderBottomColor: '#3B82F6',
+    backgroundColor: CasinoColors.cardBackground, borderBottomWidth: 3,
+    borderBottomColor: CasinoColors.accentGold,
   },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  activeTabText: {
-    color: '#3B82F6',
-  },
-  formContent: {
-    padding: 24,
-  },
+  tabText: { fontSize: 16, fontWeight: '600', color: CasinoColors.secondaryText },
+  activeTabText: { color: CasinoColors.accentGold },
+  formContent: { padding: 24 },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 16,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    height: 56,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: CasinoColors.inputBackground,
+    borderWidth: 1, borderColor: CasinoColors.inputBorder, borderRadius: 16,
+    marginBottom: 16, paddingHorizontal: 16, height: 56,
   },
-  iconWrapper: {
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    color: '#1F2937',
-    height: 56,
-  },
-  forgotPasswordButton: {
-    alignSelf: 'flex-end',
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  forgotPasswordText: {
-    fontSize: 14,
-    color: '#3B82F6',
-    fontWeight: '500',
-  },
+  iconWrapper: { marginRight: 12 },
+  input: { flex: 1, fontSize: 16, color: CasinoColors.primaryText, height: 56 },
+  forgotPasswordButton: { alignSelf: 'flex-end', paddingVertical: 8, marginBottom: 8 },
+  forgotPasswordText: { fontSize: 14, color: CasinoColors.accentBlue, fontWeight: '500' },
   primaryButton: {
-    flexDirection: 'row',
-    backgroundColor: '#3B82F6',
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    flexDirection: 'row', backgroundColor: CasinoColors.buttonPrimaryBg,
+    paddingVertical: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+    shadowColor: CasinoColors.accentGold, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6, shadowRadius: 8, elevation: 6,
   },
-  disabledButton: {
-    opacity: 0.7,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
+  disabledButton: { opacity: 0.7, backgroundColor: CasinoColors.buttonSecondaryBg },
+  primaryButtonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  primaryButtonText: { color: CasinoColors.buttonPrimaryText, fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
   passwordRequirements: {
-    marginTop: 20,
-    padding: 16,
-    backgroundColor: '#F0F9FF',
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#3B82F6',
+    marginTop: 20, padding: 16, backgroundColor: CasinoColors.inputBackground,
+    borderRadius: 12, borderLeftWidth: 4, borderLeftColor: CasinoColors.accentGold,
   },
-  requirementsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  requirementsText: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 20,
-  },
-  footer: {
-    alignItems: 'center',
-    marginTop: 40,
-  },
-  footerText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    textAlign: 'center',
-  },
+  requirementsTitle: { fontSize: 14, fontWeight: '600', color: CasinoColors.primaryText, marginBottom: 8 },
+  requirementsText: { fontSize: 13, color: CasinoColors.secondaryText, lineHeight: 20 },
+  footer: { alignItems: 'center', marginTop: 40 },
+  footerText: { fontSize: 14, color: CasinoColors.secondaryText, textAlign: 'center' },
 });

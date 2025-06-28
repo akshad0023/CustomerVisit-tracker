@@ -12,17 +12,523 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  ImageBackground,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TextInputProps,
-  TouchableOpacity, TouchableWithoutFeedback, View
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../firebaseConfig';
+import { auth, db } from '../firebaseConfig'; // Assuming firebaseConfig.ts is in the same directory
+const CasinoBackground = require('../assets/images/Lion.png');
 
+// Enhanced Casino-themed colors with premium textures
+const CasinoColors = {
+  background: '#white',            // Deeper black for premium feel
+  cardBackground: '#1A1A1A',        // Rich dark charcoal
+  primaryText: '#FFFFFF',            // Pure white for contrast
+  secondaryText: '#B8B8B8',          // Refined light grey
+  accentGold: '#D4AF37',            // Classic casino gold
+  accentGoldLight: '#F4E481',       // Lighter gold for highlights
+  accentRed: '#DC143C',             // Deep crimson red
+  accentGreen: '#228B22',           // Forest green for success
+  accentBlue: '#1E90FF',            // Dodger blue for accents
+  inputBackground: '#2A2A2A',       // Richer input background
+  inputBorder: '#666666',           // More prominent borders
+  buttonPrimaryBg: '#D4AF37',       // Classic gold
+  buttonPrimaryText: '#000000',     // Black text on gold
+  buttonSecondaryBg: '#333333',     // Darker secondary buttons
+  buttonSecondaryText: '#FFFFFF',
+  buttonDangerBg: '#8B0000',        // Dark red for danger
+  buttonDangerText: '#FFFFFF',
+  shadowColor: '#000000',
+  divider: '#444444',               // More visible dividers
+  // Using 'as const' to ensure it's treated as a readonly tuple, matching LinearGradient's prop type
+  gradientDark: ['#0A0A0A', '#1A1A1A', '#2A2A2A'] as const,
+  gradientGold: ['#D4AF37', '#F4E481', '#D4AF37'] as const,
+  neonGlow: '#D4AF37',              // Neon cyan for glow effects
+};
+
+// CasinoLogo - OwnerScreen style
+const CasinoLogo = () => (
+  <View style={styles.logoContainer}>
+    <View style={styles.logoInner}>
+      <Text style={styles.logoText}>GMT</Text>
+    </View>
+  </View>
+);
+// IconTextInput Component
+interface IconTextInputProps extends TextInputProps {
+  iconName: keyof typeof Ionicons.glyphMap;
+  containerStyle?: object;
+}
+
+const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, containerStyle, ...props }) => {
+  return (
+    <LinearGradient
+      colors={['#2A2A2A', '#1A1A1A']}
+      style={[styles.inputContainer, containerStyle]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      <Ionicons name={iconName} size={24} color={CasinoColors.accentGold} style={styles.inputIcon} />
+      <TextInput
+        style={styles.input}
+        {...props}
+        placeholderTextColor={CasinoColors.secondaryText}
+      />
+    </LinearGradient>
+  );
+};
+
+// Stylesheet - MODIFIED FOR SIZING ADJUSTMENTS AND FONT OVERFLOW FIXES
+const styles = StyleSheet.create({
+  fullScreenGradient: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: CasinoColors.background,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 140, // Increased top padding for more background logo visibility
+    paddingBottom: 100 ,
+    paddingHorizontal: 20,
+  },
+  // --- LOGO STYLES (MATCH OwnerScreen) ---
+  logoContainer: {
+    marginBottom: 24,
+  },
+  logoInner: {
+    width: 150,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: CasinoColors.accentGold,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    shadowColor: CasinoColors.accentGold,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    elevation: 10,
+    borderWidth: 1.5,
+    borderColor: CasinoColors.accentGoldLight,
+  },
+  logoText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 2,
+    color: CasinoColors.background,
+    textShadowColor: CasinoColors.accentGoldLight,
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+
+
+  // Enhanced Card Styles - ADJUSTED SIZES FOR SMALLER, CLEANER LOOK
+  card: {
+    width: '100%', // Adjusted width to be more expansive
+    maxWidth: 1000, // Removed maxWidth to allow it to expand
+    backgroundColor: 'rgba(26,26,26,0.6)',
+    borderRadius: 16,
+    paddingVertical: 5, // Reduced vertical padding
+    paddingHorizontal: 20, // Keep horizontal padding the same, or adjust as needed // Increased padding for more space
+    alignSelf: 'center',
+    shadowColor: CasinoColors.shadowColor,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 15,
+    elevation: 12,
+    borderWidth: 1.5,
+    borderColor: CasinoColors.accentGold,
+    borderTopWidth: 3,
+    borderTopColor: CasinoColors.accentGoldLight,
+  },
+
+  // Enhanced Typography
+  header: {
+    fontSize: 26, // Increased font size for prominence
+    fontWeight: '800',
+    textAlign: 'center',
+    flex: 1,
+    color: CasinoColors.primaryText,
+    letterSpacing: 1,
+    textShadowColor: CasinoColors.accentGold,
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    fontFamily: 'serif',
+  },
+  headerExisting: {
+    fontSize: 24, // Slightly smaller than new customer header
+    fontWeight: '800',
+    textAlign: 'center',
+    flex: 1,
+    color: CasinoColors.primaryText,
+    letterSpacing: 0.8,
+    textShadowColor: CasinoColors.accentGold,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    fontFamily: 'serif',
+  },
+  subtitle: {
+    fontSize: 16, // Slightly increased font size for better readability
+    color: CasinoColors.secondaryText,
+    textAlign: 'center',
+    marginBottom: 30, // Increased margin bottom for more separation
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    lineHeight: 22, // Adjusted line height
+  },
+
+  // Enhanced Interactive Elements (Choice Cards) - ADJUSTED FONT SIZES
+  choiceCard: {
+    backgroundColor: CasinoColors.inputBackground,
+    padding: 20, // Increased padding
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: CasinoColors.inputBorder,
+    alignItems: 'center',
+    marginBottom: 20, // Increased margin bottom
+    shadowColor: CasinoColors.shadowColor,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+    borderTopWidth: 2,
+    borderTopColor: CasinoColors.accentGold,
+  },
+  choiceTitle: {
+    fontSize: 18, // Increased font size
+    fontWeight: '800',
+    color: CasinoColors.accentGold,
+    marginTop: 10, // Increased margin top
+    letterSpacing: 0.8,
+    textShadowColor: CasinoColors.background,
+    textShadowOffset: { width: 0.5, height: 0.5 },
+    textShadowRadius: 1,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  choiceDescription: {
+    fontSize: 14, // Increased font size
+    color: CasinoColors.secondaryText,
+    marginTop: 6, // Increased margin top
+    textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+
+  // Enhanced Form Elements
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 20, // Increased margin bottom
+    paddingHorizontal: 0, // Removed horizontal padding
+  },
+  backButton: {
+    padding: 10, // Increased padding
+    backgroundColor: CasinoColors.inputBackground,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: CasinoColors.accentGold,
+    shadowColor: CasinoColors.accentGold,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+    marginRight: 0, // Removed right margin
+  },
+  formContainer: {
+    width: '100%'
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: CasinoColors.inputBorder,
+    borderRadius: 12, // Increased border radius
+    marginBottom: 18, // Increased margin bottom
+    paddingHorizontal: 15, // Increased padding
+    height: 48, // Increased height
+    shadowColor: CasinoColors.shadowColor,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  inputIcon: {
+    marginRight: 12,
+    color: CasinoColors.accentGold,
+  },
+  input: {
+    flex: 1,
+    height: 48, // Match inputContainer height
+    fontSize: 15, // Increased font size
+    color: CasinoColors.primaryText,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+
+  // Enhanced Buttons - ADJUSTED SIZES
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 14, // Increased padding
+    marginTop: 18, // Increased margin top
+    shadowColor: CasinoColors.shadowColor,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+    borderWidth: 1.5,
+  },
+  captureButton: {
+    backgroundColor: CasinoColors.inputBackground,
+    borderColor: CasinoColors.accentBlue,
+  },
+  captureButtonText: {
+    color: CasinoColors.accentBlue,
+    fontSize: 15, // Increased font size
+    fontWeight: '700',
+    marginLeft: 8,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  submitButton: {
+    flexDirection: 'row',
+    backgroundColor: CasinoColors.buttonPrimaryBg,
+    paddingVertical: 10,
+    paddingHorizontal:10,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: CasinoColors.accentGold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  submitButtonText: {
+    color: CasinoColors.buttonPrimaryText,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+
+  // Enhanced UI Elements
+  orText: {
+    textAlign: 'center',
+    color: CasinoColors.secondaryText,
+    marginVertical: -5, // Adjusted to be closer
+    marginBottom: 15,
+    fontWeight: '700',
+    fontSize: 14, // Increased font size
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  message: {
+    marginTop: 25, // Increased margin top
+    fontSize: 15, // Increased font size
+    textAlign: 'center',
+    paddingHorizontal: 15,
+    fontWeight: '700',
+    color: CasinoColors.accentGreen,
+    backgroundColor: CasinoColors.inputBackground,
+    borderRadius: 12,
+    paddingVertical: 12, // Increased padding vertical
+    borderWidth: 1.5,
+    borderColor: CasinoColors.accentGreen,
+    letterSpacing: 0.4,
+    textShadowColor: CasinoColors.background,
+    textShadowOffset: { width: 0.5, height: 0.5 },
+    textShadowRadius: 1.5,
+  },
+
+  // Enhanced Navigation Elements - ADJUSTED SIZES
+  menuButton: {
+    position: 'absolute',
+    top: 70,
+    left: 15,
+    zIndex: 99,
+    backgroundColor: 'transparent',
+    padding: 6,
+  },
+ 
+  // Enhanced Modal Styles - ADJUSTED SIZES
+  modalBackgroundCentered: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 15,
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 200,
+  },
+menuContainer: {
+  position: 'absolute',
+  top: 110,
+  left: 2,
+  width: 230,
+  backgroundColor: CasinoColors.cardBackground,
+  paddingVertical: 12,
+  paddingHorizontal: 12,
+  shadowColor: CasinoColors.accentGold,
+  shadowOpacity: 0.5,
+  shadowRadius: 10,
+  elevation: 10,
+  borderRightWidth: 2,
+  borderColor: CasinoColors.accentGold,
+  zIndex: 200,
+  borderTopRightRadius: 16,
+  borderBottomRightRadius: 16,
+  maxHeight: 350,
+},
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginVertical: 1,
+  },
+  menuIcon: {
+    marginRight: 15,
+    color: CasinoColors.accentGold,
+    fontSize: 18,
+  },
+  menuItemText: {
+  fontSize: 17,                // increased size
+  color: '#FFFFFF',            // pure white
+  fontWeight: '800',           // bolder
+  letterSpacing: 0.4,
+},
+  menuDivider: {
+    height: 1.5,
+    backgroundColor: CasinoColors.accentGold,
+    marginVertical: 6,
+    opacity: 0.3,
+  },
+  selectionModal: {
+    width: '90%',
+    maxWidth: 360,
+    backgroundColor: CasinoColors.cardBackground,
+    borderRadius: 20,
+    padding: 25,
+    maxHeight: '70%',
+    shadowColor: CasinoColors.accentBlue,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    elevation: 12,
+    borderWidth: 2,
+    borderColor: CasinoColors.accentBlue,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: CasinoColors.primaryText,
+    marginBottom: 10,
+    textAlign: 'center',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  modalSubtitle: {
+    fontSize: 15,
+    color: CasinoColors.secondaryText,
+    marginBottom: 20,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  selectionItem: {
+    backgroundColor: CasinoColors.inputBackground,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: CasinoColors.inputBorder,
+    borderLeftWidth: 3,
+    borderLeftColor: CasinoColors.accentGold,
+  },
+  selectionName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: CasinoColors.primaryText,
+    letterSpacing: 0.4,
+  },
+  selectionPhone: {
+    fontSize: 14,
+    color: CasinoColors.secondaryText,
+    marginTop: 5,
+    fontWeight: '500',
+  },
+  modalCloseText: {
+    marginTop: 20,
+    fontSize: 16,
+    color: CasinoColors.accentRed,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  foundCustomerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CasinoColors.inputBackground,
+    borderWidth: 1.5,
+    borderColor: CasinoColors.accentGreen,
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
+    shadowColor: CasinoColors.accentGreen,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+    borderLeftWidth: 4,
+    borderLeftColor: CasinoColors.accentGreen,
+  },
+  foundCustomerName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: CasinoColors.primaryText,
+    letterSpacing: 0.4,
+  },
+  foundCustomerPhone: {
+    fontSize: 14,
+    color: CasinoColors.secondaryText,
+    fontWeight: '600',
+  },
+});
 
 const uriToBlob = (uri: string): Promise<Blob> => {
   return new Promise((resolve, reject) => {
@@ -33,19 +539,6 @@ const uriToBlob = (uri: string): Promise<Blob> => {
     xhr.open('GET', uri, true);
     xhr.send(null);
   });
-};
-
-interface IconTextInputProps extends TextInputProps {
-  iconName: keyof typeof Ionicons.glyphMap;
-  containerStyle?: object;
-}
-const IconTextInput: React.FC<IconTextInputProps> = ({ iconName, containerStyle, ...props }) => {
-  return (
-    <View style={[styles.inputContainer, containerStyle]}>
-      <Ionicons name={iconName} size={22} color="#888" style={styles.inputIcon} />
-      <TextInput style={styles.input} {...props} placeholderTextColor="#aaa" />
-    </View>
-  );
 };
 
 interface Customer {
@@ -76,7 +569,7 @@ export default function Login() {
 
   // Payout Snapshot State
   const [showPayoutCamera, setShowPayoutCamera] = useState(false);
-  const [payoutSnapshotUri, setPayoutSnapshotUri] = useState<string | null>(null); // This will hold the URI *after* it's been taken
+  const [payoutSnapshotUri, setPayoutSnapshotUri] = useState<string | null>(null);
   const [pendingMatchAmount, setPendingMatchAmount] = useState<number | null>(null);
   const [pendingMachineNumber, setPendingMachineNumber] = useState<string>('');
 
@@ -131,7 +624,6 @@ export default function Login() {
           Alert.alert("Not Found", "No customer with this phone number."); setName('');
         }
       } else {
-        // Name validation for lookup: prevent digits
         if (/\d/.test(v)) {
             Alert.alert("Invalid Name", "Name cannot contain digits.");
             setIsSearching(false);
@@ -155,21 +647,16 @@ export default function Login() {
     setFoundCustomer(customer); setName(customer.name); setPhone(customer.phone); setSearchModalVisible(false);
   };
 
-  // MODIFIED: handlePayoutSnapshot now returns the URI
   const handlePayoutSnapshot = async (): Promise<string | null> => {
     const p = await ImagePicker.requestCameraPermissionsAsync();
     if (!p.granted) { Alert.alert('Camera access is required for payout snapshot!'); return null; }
     const r = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.5 });
     if (!r.canceled) {
-      // Don't set state here immediately, just return the URI
-      // Alert.alert('Snapshot Captured!', 'Payout photo captured successfully.'); // Moved to handlePayoutCameraFlow
       return r.assets[0].uri;
     }
     return null;
   };
 
-  // Modified checkCredits to handle payout snapshot for match > 0 (existing only)
-  // Added optional parameter to directly pass the payoutSnapshotUri
   const checkCredits = async (capturedPayoutUri: string | null = null) => {
     const isNew = formMode === 'new';
     const cPhone = isNew ? phone.trim() : foundCustomer?.phone;
@@ -186,10 +673,9 @@ export default function Login() {
     }
     if (isNew) {
       if (!name) { Alert.alert('Validation Error', 'Please enter a name for the new customer.'); return; }
-      // NEW: Name validation for new customer registration
       if (/\d/.test(name.trim())) {
           Alert.alert("Invalid Name", "Customer name cannot contain digits.");
-          setIsSubmitting(false); // Stop submission
+          setIsSubmitting(false);
           return;
       }
     }
@@ -200,20 +686,19 @@ export default function Login() {
       return;
     }
 
-    // Payout Snapshot Logic (prioritize capturedPayoutUri if present)
     const currentPayoutUri = capturedPayoutUri || payoutSnapshotUri;
     if (matchAmtNumber > 0) {
-      if (!currentPayoutUri) { // If no URI yet, prompt for camera
+      if (!currentPayoutUri) {
         setPendingMatchAmount(matchAmtNumber);
         setPendingMachineNumber(machineNumber.trim());
-        setShowPayoutCamera(true); // Open the camera modal
-        return; // Exit checkCredits, will resume after photo is taken
+        setShowPayoutCamera(true);
+        return;
       }
     }
 
     setIsSubmitting(true);
     setMessage('Processing...');
-    const ownerId = user.uid; // Assuming ownerId is same as employee's UID for now
+    const ownerId = user.uid;
     const today = dayjs().format('YYYY-MM-DD');
     const cName = isNew ? name.trim() : foundCustomer!.name;
 
@@ -222,7 +707,6 @@ export default function Login() {
       const dSnap = await getDoc(vRef);
       const exists = dSnap.exists();
       const data = exists ? dSnap.data() : null;
-      // 12-hour reset logic
       if (exists && data?.timestamp?.toDate) {
         const lastVisit = data.timestamp.toDate();
         const now = new Date();
@@ -247,18 +731,16 @@ export default function Login() {
         } catch (e) { Alert.alert('Upload Error', 'Could not upload ID.'); setIsSubmitting(false); return; }
       }
 
-      // For payout snapshot logic (now using currentPayoutUri)
       let payoutSnapshotUrl = '';
-      if (matchAmtNumber > 0 && currentPayoutUri) { // Only proceed if matchAmount > 0 and a URI is available
+      if (matchAmtNumber > 0 && currentPayoutUri) {
         try {
           const ts = Date.now();
-          const payoutPath = `owners/${ownerId}/matchSnapshots/${cPhone}/${ts}.jpg`; // Example path, you might refine this later
-          const blob = await uriToBlob(currentPayoutUri); // Use the URI directly
+          const payoutPath = `owners/${ownerId}/matchSnapshots/${cPhone}/${ts}.jpg`;
+          const blob = await uriToBlob(currentPayoutUri);
           const store = getStorage();
           const payoutRef = ref(store, payoutPath);
           await uploadBytes(payoutRef, blob);
           payoutSnapshotUrl = await getDownloadURL(payoutRef);
-          // Set AsyncStorage flag for pending payout (if this is still needed)
           await AsyncStorage.setItem(`pendingPayout_${cPhone}`, 'true');
         } catch (e) {
           Alert.alert('Upload Error', 'Could not upload payout snapshot.');
@@ -275,7 +757,7 @@ export default function Login() {
         matchAmount: matchAmtNumber,
         machineNumber: machineNumber.trim(),
         timestamp: Timestamp.now(),
-        ...(payoutSnapshotUrl ? { payoutSnapshotUrl } : {}) // Include URL if it exists
+        ...(payoutSnapshotUrl ? { payoutSnapshotUrl } : {})
       });
 
       if (isNew) {
@@ -286,44 +768,36 @@ export default function Login() {
         setMessage(`✅ Visit updated for ${cName}. Matched: $${matchAmtNumber}`);
       }
 
-      // Reset all related states after successful submission
       setTimeout(() => {
         clearCustomerInputs();
-        setPayoutSnapshotUri(null); // Clear the URI for the next transaction
-        setShowPayoutCamera(false); // Make sure the modal is closed
+        setPayoutSnapshotUri(null);
+        setShowPayoutCamera(false);
         setPendingMatchAmount(null);
         setPendingMachineNumber('');
       }, 2000);
     } catch (e) {
-      console.error("Error during checkCredits:", e); // Log the actual error
+      console.error("Error during checkCredits:", e);
       Alert.alert('Error', 'An unknown error occurred during processing.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // MODIFIED: handlePayoutCameraFlow now uses the returned URI
   const handlePayoutCameraFlow = async () => {
-    const capturedUri = await handlePayoutSnapshot(); // Capture the URI returned from the camera function
+    const capturedUri = await handlePayoutSnapshot();
     if (capturedUri) {
-      // Set the payoutSnapshotUri state for consistency (optional, as it's passed directly now)
       setPayoutSnapshotUri(capturedUri);
-      Alert.alert('Snapshot Captured!', 'Payout photo captured successfully.'); // Alert here after successful capture
+      Alert.alert('Snapshot Captured!', 'Payout photo captured successfully.');
 
-      // Set the form fields to pending values before calling checkCredits again
-      // This ensures checkCredits uses the correct context even if user interacted with form.
       setMatchAmount(String(pendingMatchAmount ?? ''));
       setMachineNumber(pendingMachineNumber);
 
-      setShowPayoutCamera(false); // Close the modal NOW that we have the URI and are proceeding
+      setShowPayoutCamera(false);
 
-      // Call checkCredits with the newly captured URI to proceed with the saving logic
-      // A slight delay might still be good for UX to allow modal to visually close
       setTimeout(() => {
-        checkCredits(capturedUri); // Pass the URI directly
+        checkCredits(capturedUri);
       }, 400);
     } else {
-      // If no photo was taken, ensure modal can be closed by user or stays open
       Alert.alert('No Photo Taken', 'Payout snapshot is required to proceed.');
     }
   };
@@ -334,65 +808,67 @@ export default function Login() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007bff" />
+        <ActivityIndicator size="large" color={CasinoColors.accentGold} />
       </View>
     );
   }
 
   return (
     <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-      <LinearGradient
-        colors={['#f8fafc', '#e2e8f0', '#cbd5e1']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.fullScreenGradient}
-      >
+      <ImageBackground source={CasinoBackground} style={styles.fullScreenGradient} resizeMode="cover">
+        <LinearGradient
+          colors={[CasinoColors.background, CasinoColors.cardBackground, CasinoColors.background]}
+          locations={[0, 0.5, 1]}
+          style={styles.fullScreenGradient}
+        >
         <SafeAreaView style={styles.container}>
-          {/* Adjusted top position for buttons */}
           <TouchableOpacity
             style={styles.menuButton}
             onPress={() => setMenuVisible(prev => !prev)}
           >
-            <Ionicons name="menu" size={32} color="#1e293b" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.resetButton} onPress={resetForm}>
-            <Ionicons name="refresh-circle-outline" size={32} color="#1e293b" />
+            <Ionicons name="reorder-three-outline" size={38} color={CasinoColors.accentGold} />
           </TouchableOpacity>
 
           {menuVisible && (
-            <View style={styles.menuContainer}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/visithistory'); }}>
-                <Ionicons name="time-outline" size={22} color="#444" style={styles.menuIcon} />
-                <Text style={styles.menuItemText}>Visit History</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={styles.menuOverlay}
+              onPress={() => setMenuVisible(false)}
+            >
+              <View style={styles.menuContainer}>
+                <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/visithistory'); }}>
+                  <Ionicons name="time-outline" size={22} color={CasinoColors.secondaryText} style={styles.menuIcon} />
+                  <Text style={styles.menuItemText}>Visit History</Text>
+                </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/customerinfo'); }}>
-                <Ionicons name="people-outline" size={22} color="#444" style={styles.menuIcon} />
+                <Ionicons name="people-outline" size={22} color={CasinoColors.secondaryText} style={styles.menuIcon} />
                 <Text style={styles.menuItemText}>Customer Info</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/employeeshift'); }}>
-                <Ionicons name="person-outline" size={22} color="#444" style={styles.menuIcon} />
+                <Ionicons name="person-outline" size={22} color={CasinoColors.secondaryText} style={styles.menuIcon} />
                 <Text style={styles.menuItemText}>Employee Shift</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/machinetracker'); }}>
-                <Ionicons name="analytics-outline" size={22} color="#444" style={styles.menuIcon} />
+                <Ionicons name="analytics-outline" size={22} color={CasinoColors.secondaryText} style={styles.menuIcon} />
                 <Text style={styles.menuItemText}>Machine Tracker</Text>
               </TouchableOpacity>
               {ownerData?.hasSmsFeature === true && (
                 <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/bulksms'); }}>
-                  <Ionicons name="send-outline" size={22} color="#444" style={styles.menuIcon} />
+                  <Ionicons name="send-outline" size={22} color={CasinoColors.secondaryText} style={styles.menuIcon} />
                   <Text style={styles.menuItemText}>Send Bulk Message</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); router.push('/profitloss'); }}>
-                <Ionicons name="wallet-outline" size={22} color="#444" style={styles.menuIcon} />
+                <Ionicons name="wallet-outline" size={22} color={CasinoColors.secondaryText} style={styles.menuIcon} />
                 <Text style={styles.menuItemText}>Profit & Loss</Text>
               </TouchableOpacity>
               <View style={styles.menuDivider} />
-              <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-                <Ionicons name="log-out-outline" size={22} color="#dc3545" style={styles.menuIcon} />
-                <Text style={[styles.menuItemText, { color: '#dc3545' }]}>Logout</Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+                  <Ionicons name="log-out-outline" size={22} color={CasinoColors.accentRed} style={styles.menuIcon} />
+                  <Text style={[styles.menuItemText, { color: CasinoColors.accentRed }]}>Logout</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
           )}
 
           <Modal visible={searchModalVisible} transparent animationType="slide">
@@ -417,14 +893,13 @@ export default function Login() {
             </View>
           </Modal>
 
-          {/* Modal for payout snapshot camera prompt */}
           <Modal visible={showPayoutCamera} transparent animationType="fade">
             <View style={styles.modalBackgroundCentered}>
               <View style={[styles.selectionModal, { alignItems: 'center' }]}>
                 <Text style={styles.modalTitle}>Machine Snapshot Required</Text>
                 <Text style={styles.modalSubtitle}>Before saving, please take a photo of the machine where match amount is entered.</Text>
                 <TouchableOpacity style={[styles.button, styles.captureButton, { marginTop: 18 }]} onPress={handlePayoutCameraFlow}>
-                  <Ionicons name="camera-outline" size={22} color="#0284c7" />
+                  <Ionicons name="camera-outline" size={22} color={CasinoColors.buttonPrimaryText} />
                   <Text style={styles.captureButtonText}>Take Snapshot</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { setShowPayoutCamera(false); setPayoutSnapshotUri(null); }}>
@@ -435,35 +910,31 @@ export default function Login() {
           </Modal>
 
           <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-            {/* Enhanced Logo UI */}
-            <View style={styles.logoContainer}>
-              <Text style={styles.logoTextCM}>CM</Text>
-              <Text style={styles.logoTextT}>T</Text>
-            </View>
+           {/* <CasinoLogo /> */}
 
             <View style={styles.card}>
               {formMode === null ? (
                 <>
-                  <Text style={styles.header}>Register Member</Text>
-                  <Text style={styles.subtitle}>How would you like to proceed?</Text>
+                  <Text style={styles.header}>Customer Management</Text>
+                  <Text style={styles.subtitle}>Choose an option to manage customers.</Text>
                   <TouchableOpacity style={styles.choiceCard} onPress={() => setFormMode('new')}>
-                    <Ionicons name="person-add-outline" size={32} color="#007bff" />
-                    <Text style={styles.choiceTitle}>New Customer</Text>
-                    <Text style={styles.choiceDescription}>Register a brand new customer.</Text>
+                    <Ionicons name="person-add-outline" size={30} color={CasinoColors.accentGold} />
+                    <Text style={styles.choiceTitle}>New Customer Registration</Text>
+                    <Text style={styles.choiceDescription}>Enroll a new player and their details.</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.choiceCard} onPress={() => setFormMode('existing')}>
-                    <Ionicons name="people-outline" size={32} color="#007bff" />
-                    <Text style={styles.choiceTitle}>Existing Customer</Text>
-                    <Text style={styles.choiceDescription}>Look up and record a visit.</Text>
+                    <Ionicons name="search-outline" size={30} color={CasinoColors.accentGold} />
+                    <Text style={styles.choiceTitle}>Existing Customer Visit</Text>
+                    <Text style={styles.choiceDescription}>Log a new visit or payout for a returning player.</Text>
                   </TouchableOpacity>
                 </>
               ) : (
                 <View style={styles.formContainer}>
                   <View style={styles.formHeader}>
                     <TouchableOpacity onPress={() => { setFormMode(null); clearCustomerInputs(); }} style={styles.backButton}>
-                      <Ionicons name="arrow-back" size={24} color="#1e293b" />
+                      <Ionicons name="arrow-back" size={24} color={CasinoColors.secondaryText} />
                     </TouchableOpacity>
-                    <Text style={styles.header}>{formMode === 'new' ? 'Register New' : 'Find Existing'}</Text>
+                    <Text style={formMode === 'new' ? styles.header : styles.headerExisting}>{formMode === 'new' ? 'Register Customer' : 'Existing Customer'}</Text>
                     <View style={{ width: 24 }} />
                   </View>
 
@@ -478,13 +949,13 @@ export default function Login() {
                     <>
                       {foundCustomer ? (
                         <View style={styles.foundCustomerBox}>
-                          <Ionicons name="checkmark-circle" size={24} color="#166534" />
+                          <Ionicons name="checkmark-circle" size={24} color={CasinoColors.accentGreen} />
                           <View style={{ flex: 1, marginLeft: 10 }}>
                             <Text style={styles.foundCustomerName}>{foundCustomer.name}</Text>
                             <Text style={styles.foundCustomerPhone}>{foundCustomer.phone}</Text>
                           </View>
                           <TouchableOpacity onPress={() => { setFoundCustomer(null); setName(''); setPhone(''); }}>
-                            <Ionicons name="close-circle" size={24} color="#64748b" />
+                            <Ionicons name="close-circle" size={24} color={CasinoColors.accentRed} />
                           </TouchableOpacity>
                         </View>
                       ) : (
@@ -498,22 +969,36 @@ export default function Login() {
                   )}
 
                   <View style={styles.amountRow}>
-                    <IconTextInput iconName="cash-outline" placeholder={formMode === 'new' ? "Match Amt (Optional)" : "Match Amt (Required)"} keyboardType="numeric" value={matchAmount} onChangeText={setMatchAmount} containerStyle={{flex: 2}}/>
-                    <IconTextInput iconName="game-controller-outline" placeholder="Machine #" keyboardType="number-pad" value={machineNumber} onChangeText={setMachineNumber} containerStyle={{flex: 1, marginLeft: 10}}/>
+                    <IconTextInput
+                        iconName="cash-outline"
+                        placeholder={formMode === 'new' ? "Match Amt (Opt.)" : "Match Amt (Req.)"}
+                        keyboardType="numeric"
+                        value={matchAmount}
+                        onChangeText={setMatchAmount}
+                        containerStyle={{flex: 2}}
+                    />
+                    <IconTextInput
+                        iconName="game-controller-outline"
+                        placeholder="Machine #"
+                        keyboardType="number-pad"
+                        value={machineNumber}
+                        onChangeText={setMachineNumber}
+                        containerStyle={{flex: 1, marginLeft: 10}}
+                    />
                   </View>
 
                   {formMode === 'new' && (
                     <TouchableOpacity style={[styles.button, styles.captureButton]} onPress={handleCaptureId}>
-                      <Ionicons name={idImage ? "camera" : "camera-outline"} size={20} color="#0284c7" />
-                      <Text style={styles.captureButtonText}>{idImage ? 'Photo Captured!' : 'Capture Photo (Optional)'}</Text>
+                      <Ionicons name={idImage ? "camera" : "camera-outline"} size={20} color={CasinoColors.accentBlue} />
+                      <Text style={styles.captureButtonText}>{idImage ? 'Photo Captured!' : 'Capture Photo'}</Text>
                     </TouchableOpacity>
                   )}
 
                   <TouchableOpacity style={[styles.button, styles.submitButton]} onPress={() => checkCredits()} disabled={isSubmitting}>
-                    {isSubmitting ? <ActivityIndicator color="#fff" /> : (
+                    {isSubmitting ? <ActivityIndicator color={CasinoColors.buttonPrimaryText} /> : (
                       <>
-                        <Ionicons name="checkmark-circle-outline" size={22} color="#fff" />
-                        <Text style={styles.submitButtonText}>Check & Save Visit</Text>
+                        <Ionicons name="save-outline" size={22} color={CasinoColors.buttonPrimaryText} />
+                        <Text style={styles.submitButtonText}>Process Visit</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -523,326 +1008,8 @@ export default function Login() {
             </View>
           </ScrollView>
         </SafeAreaView>
-      </LinearGradient>
+        </LinearGradient>
+      </ImageBackground>
     </TouchableWithoutFeedback>
   );
 }
-
-const styles = StyleSheet.create({
-  fullScreenGradient: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc'
-  },
-  container: {
-    flex: 1,
-    backgroundColor: 'transparent'
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 80,
-    paddingBottom: 40,
-    paddingHorizontal: 20,
-  },
-  logoContainer: {
-    alignSelf: 'center',
-    flexDirection: 'row',
-    width: 120,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoTextCM: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#3b82f6',
-    letterSpacing: 1,
-  },
-  logoTextT: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: 1,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  header: {
-    fontSize: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 6,
-    color: '#1e293b',
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 24,
-    fontWeight: '400',
-  },
-  choiceCard: {
-    backgroundColor: '#f8fafc',
-    padding: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  choiceTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginTop: 8,
-  },
-  choiceDescription: {
-    fontSize: 13,
-    color: '#64748b',
-    marginTop: 4,
-    textAlign: 'center',
-    fontWeight: '400',
-  },
-  formHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 20,
-  },
-  backButton: {
-    padding: 8,
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-  },
-  formContainer: { width: '100%' },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    marginBottom: 16,
-    paddingHorizontal: 14,
-  },
-  inputIcon: {
-    marginRight: 10,
-    color: '#64748b',
-  },
-  input: {
-    flex: 1,
-    height: 50,
-    fontSize: 16,
-    color: '#1e293b',
-    fontWeight: '400',
-  },
-  orText: {
-    textAlign: 'center',
-    color: '#94a3b8',
-    marginVertical: -8,
-    marginBottom: 8,
-    fontWeight: '500',
-    fontSize: 13,
-  },
-  amountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    paddingVertical: 14,
-    marginTop: 12,
-  },
-  captureButton: {
-    backgroundColor: '#f0f9ff',
-    borderWidth: 1,
-    borderColor: '#bae6fd',
-  },
-  captureButtonText: {
-    color: '#0284c7',
-    fontSize: 15,
-    fontWeight: '500',
-    marginLeft: 6,
-  },
-  submitButton: {
-    backgroundColor: '#3b82f6',
-  },
-  submitButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  message: {
-    marginTop: 20,
-    fontSize: 14,
-    textAlign: 'center',
-    paddingHorizontal: 12,
-    fontWeight: '500',
-    color: '#1e293b',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    paddingVertical: 10,
-  },
-  menuButton: {
-    position: 'absolute',
-    top: 80,
-    left: 20,
-    zIndex: 99,
-    padding: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  resetButton: {
-    position: 'absolute',
-    top: 80,
-    right: 20,
-    zIndex: 99,
-    padding: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  modalBackground: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-start',
-    padding: 0,
-  },
-  modalBackgroundCentered: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 0,
-  },
-  menuContainer: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 8,
-    position: 'absolute',
-    top: 120,
-    left: 20,
-    minWidth: 240,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    zIndex: 100,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  menuIcon: { marginRight: 12 },
-  menuItemText: { fontSize: 16, color: '#334155', fontWeight: '500' },
-  menuDivider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 4 },
-  selectionModal: {
-    width: '100%',
-    maxWidth: 350,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 20,
-    maxHeight: '70%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 6,
-    color: '#1e293b',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 16,
-    fontWeight: '400',
-  },
-  selectionItem: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  selectionName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1e293b',
-  },
-  selectionPhone: {
-    fontSize: 14,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  modalCloseText: {
-    marginTop: 16,
-    textAlign: 'center',
-    color: '#3b82f6',
-    fontWeight: '500',
-    fontSize: 15,
-    padding: 10,
-  },
-  foundCustomerBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0fdf4',
-    padding: 16,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
-    marginBottom: 16,
-  },
-  foundCustomerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#166534',
-  },
-  foundCustomerPhone: {
-    fontSize: 14,
-    color: '#15803d',
-    marginTop: 1,
-  },
-});
